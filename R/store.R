@@ -1,0 +1,1067 @@
+# Store abstraction for datom storage backends
+#
+# Type-specific constructors: datom_store_s3(), datom_store_local()
+# Composite constructor: datom_store() bundles governance + data + git config
+
+
+# --- datom_store: composite constructor ---------------------------------------
+
+#' Create a datom Store
+#'
+#' Bundles a governance store component, a data store component, and git config
+#' into a single store object. Role (developer vs reader) is derived from
+#' `github_pat` presence.
+#'
+#' @param governance A store component (e.g., `datom_store_s3()`) for governance
+#'   files (dispatch, ref, migration history), or `NULL` for a no-governance
+#'   store. A no-governance store represents a project that has not yet been
+#'   promoted to governance (via the datomanager package); `gov_repo_url` and
+#'   `gov_local_path` must also be `NULL` in that case.
+#' @param data A store component (e.g., `datom_store_s3()`) for data files
+#'   (manifest, tables, metadata).
+#' @param github_pat GitHub personal access token. If provided, role is
+#'   `"developer"`. If NULL, role is `"reader"`.
+#' @param data_repo_url GitHub remote URL for the data repository. Required when
+#'   `github_pat` is provided and `create_repo = FALSE` in `datom_init_repo()`.
+#' @param gov_repo_url GitHub remote URL for the shared governance repository.
+#'   The governance repo is created once per org (via the datomanager package)
+#'   and referenced here by every project that uses it.
+#' @param gov_local_path Local directory path for the governance clone. If NULL
+#'   (default), the clone is placed as a sibling of the data repo, named after
+#'   the basename of `gov_repo_url` (e.g., `"acme-gov"`).
+#' @param github_org GitHub organization for repo creation. NULL for personal repos.
+#' @param github_api_url GitHub API base URL. `NULL` (default) uses
+#'   `"https://api.github.com"`, which is correct for github.com and GitHub
+#'   Enterprise Cloud (GHEC). For GitHub Enterprise Server (GHES) pass the
+#'   server's API root, e.g. `"https://github.mycompany.com/api/v3"`. A
+#'   trailing `/` is stripped for consistency.
+#' @param validate If `TRUE` (default), validate GitHub PAT via API.
+#'   Set to `FALSE` for tests or offline use.
+#'
+#' @return A `datom_store` object.
+#' @export
+#'
+#' @examples
+#' tmp <- tempfile("datom_store_")
+#' store <- datom_store(
+#'   data = datom_store_local(path = tmp),
+#'   data_repo_url = "https://github.com/example/my-project",
+#'   validate = FALSE
+#' )
+#' store
+#' is_datom_store(store)
+#' unlink(tmp, recursive = TRUE)
+datom_store <- function(governance = NULL,
+                        data,
+                        github_pat = NULL,
+                        data_repo_url = NULL,
+                        gov_repo_url = NULL,
+                        gov_local_path = NULL,
+                        github_org = NULL,
+                        github_api_url = NULL,
+                        validate = TRUE) {
+
+  # --- Validate components are store objects ----------------------------------
+  # governance is optional: a store with governance = NULL represents a
+  # gov-on-demand project that has not yet been promoted to governance (via
+  # the datomanager package). All gov_* arguments must also be NULL in that case.
+  if (!is.null(governance) && !.is_datom_store_component(governance)) {
+    cli::cli_abort(
+      "{.arg governance} must be a datom store component (e.g., {.fn datom_store_s3}) or NULL."
+    )
+  }
+
+  if (!.is_datom_store_component(data)) {
+    cli::cli_abort(
+      "{.arg data} must be a datom store component (e.g., {.fn datom_store_s3})."
+    )
+  }
+
+  # datom_store_s3_creds carries no location; governance is mandatory so that
+  # ref.json can supply the bucket/prefix/region at connection time.
+  if (inherits(data, "datom_store_s3_creds") && is.null(governance)) {
+    cli::cli_abort(c(
+      "{.fn datom_store_s3_creds} requires a governance component.",
+      "i" = "Bucket, prefix, and region are resolved from {.file ref.json} at connection time.",
+      "i" = "Supply {.arg governance} so datom knows where to find the ref."
+    ))
+  }
+
+  if (is.null(governance) && (!is.null(gov_repo_url) || !is.null(gov_local_path))) {
+    cli::cli_abort(c(
+      "{.arg gov_repo_url} and {.arg gov_local_path} must be NULL when {.arg governance} is NULL.",
+      "i" = "A no-governance store cannot reference a governance repo."
+    ))
+  }
+
+  # --- Validate github_pat ---------------------------------------------------
+  if (!is.null(github_pat)) {
+    if (!is.character(github_pat) || length(github_pat) != 1L ||
+        is.na(github_pat) || !nzchar(github_pat)) {
+      cli::cli_abort("{.arg github_pat} must be a single non-empty string or NULL.")
+    }
+  }
+
+  # --- Validate data_repo_url ------------------------------------------------
+  if (!is.null(data_repo_url)) {
+    if (!is.character(data_repo_url) || length(data_repo_url) != 1L ||
+        is.na(data_repo_url) || !nzchar(data_repo_url)) {
+      cli::cli_abort("{.arg data_repo_url} must be a single non-empty string or NULL.")
+    }
+  }
+
+  # --- Validate gov_repo_url --------------------------------------------------
+  if (!is.null(gov_repo_url)) {
+    if (!is.character(gov_repo_url) || length(gov_repo_url) != 1L ||
+        is.na(gov_repo_url) || !nzchar(gov_repo_url)) {
+      cli::cli_abort("{.arg gov_repo_url} must be a single non-empty string or NULL.")
+    }
+  }
+
+  # --- Validate gov_local_path ------------------------------------------------
+  if (!is.null(gov_local_path)) {
+    if (!is.character(gov_local_path) || length(gov_local_path) != 1L ||
+        is.na(gov_local_path) || !nzchar(gov_local_path)) {
+      cli::cli_abort("{.arg gov_local_path} must be a single non-empty string or NULL.")
+    }
+  }
+
+  # --- Validate github_org ---------------------------------------------------
+  if (!is.null(github_org)) {
+    if (!is.character(github_org) || length(github_org) != 1L ||
+        is.na(github_org) || !nzchar(github_org)) {
+      cli::cli_abort("{.arg github_org} must be a single non-empty string or NULL.")
+    }
+  }
+
+  # --- Validate and normalise github_api_url ----------------------------------
+  if (!is.null(github_api_url)) {
+    if (!is.character(github_api_url) || length(github_api_url) != 1L ||
+        is.na(github_api_url) || !nzchar(github_api_url)) {
+      cli::cli_abort("{.arg github_api_url} must be a single non-empty string or NULL.")
+    }
+    if (!grepl("^https://", github_api_url)) {
+      cli::cli_abort("{.arg github_api_url} must start with {.code https://}.")
+    }
+    github_api_url <- sub("/+$", "", github_api_url)
+  }
+
+  # Resolved base URL used for all GitHub API calls
+  resolved_api_url <- github_api_url %||% "https://api.github.com"
+
+  # --- Role derivation --------------------------------------------------------
+  role <- if (!is.null(github_pat)) "developer" else "reader"
+
+  # --- GitHub PAT validation --------------------------------------------------
+  github_identity <- NULL
+
+  if (!is.null(github_pat) && isTRUE(validate)) {
+    github_identity <- .datom_validate_github_pat(github_pat, api_url = resolved_api_url)
+  }
+
+  structure(
+    list(
+      governance = governance,
+      data = data,
+      role = role,
+      github_pat = github_pat,
+      data_repo_url = data_repo_url,
+      gov_repo_url = gov_repo_url,
+      gov_local_path = gov_local_path,
+      github_org = github_org,
+      github_api_url = resolved_api_url,
+      validated = isTRUE(validate),
+      identity = list(
+        github = github_identity,
+        governance = if (!is.null(governance)) governance$identity else NULL,
+        data = data$identity
+      )
+    ),
+    class = "datom_store"
+  )
+}
+
+
+#' Check if Object is a datom Store
+#'
+#' @param x Object to test.
+#' @return TRUE or FALSE.
+#' @export
+#'
+#' @examples
+#' tmp <- tempfile("datom_store_")
+#' store <- datom_store(
+#'   data = datom_store_local(path = tmp),
+#'   data_repo_url = "https://github.com/example/my-project",
+#'   validate = FALSE
+#' )
+#' is_datom_store(store)
+#' is_datom_store("not a store")
+#' unlink(tmp, recursive = TRUE)
+is_datom_store <- function(x) {
+  inherits(x, "datom_store")
+}
+
+
+#' Print a datom Store
+#'
+#' Displays store configuration with masked secrets.
+#'
+#' @param x A `datom_store` object.
+#' @param ... Ignored.
+#' @return Invisible `x`.
+#' @export
+#'
+#' @examples
+#' tmp <- tempfile("datom_store_")
+#' store <- datom_store(
+#'   data = datom_store_local(path = tmp),
+#'   data_repo_url = "https://github.com/example/my-project",
+#'   validate = FALSE
+#' )
+#' print(store)
+#' unlink(tmp, recursive = TRUE)
+print.datom_store <- function(x, ...) {
+  cli::cli_h3("datom store")
+  cli::cli_ul()
+  cli::cli_li("Role: {.val {x$role}}")
+
+  if (!is.null(x$data_repo_url)) {
+    cli::cli_li("Data repo: {.url {x$data_repo_url}}")
+  }
+
+  if (!is.null(x$gov_repo_url)) {
+    cli::cli_li("Gov repo: {.url {x$gov_repo_url}}")
+  }
+
+  if (!is.null(x$gov_local_path)) {
+    cli::cli_li("Gov local path: {.path {x$gov_local_path}}")
+  }
+
+  if (!is.null(x$github_org)) {
+    cli::cli_li("GitHub org: {.val {x$github_org}}")
+  }
+
+  if (!is.null(x$github_pat)) {
+    cli::cli_li("GitHub PAT: {.val {(.datom_mask_secret(x$github_pat))}}")
+  }
+
+  if (!is.null(x$github_api_url)) {
+    default_api <- "https://api.github.com"
+    if (!identical(x$github_api_url, default_api)) {
+      cli::cli_li("GitHub API URL: {.url {x$github_api_url}}")
+    }
+  }
+
+  if (!is.null(x$identity$github)) {
+    cli::cli_li("GitHub user: {.val {x$identity$github$login}}")
+  }
+
+  cli::cli_end()
+
+  cli::cli_text("")
+  cli::cli_text("{.strong Governance:}")
+  if (is.null(x$governance)) {
+    cli::cli_text("{.emph not attached}")
+  } else {
+    print(x$governance)
+  }
+
+  cli::cli_text("")
+  cli::cli_text("{.strong Data:}")
+  print(x$data)
+
+  invisible(x)
+}
+
+
+#' Check if Object is a Store Component
+#'
+#' Returns TRUE for any datom store component type (datom_store_s3, future
+#' datom_store_local, etc.).
+#'
+#' @param x Object to test.
+#' @return TRUE or FALSE.
+#' @keywords internal
+.is_datom_store_component <- function(x) {
+  inherits(x, "datom_store_s3") ||
+    inherits(x, "datom_store_local") ||
+    inherits(x, "datom_store_s3_creds")
+}
+
+
+#' Get Backend Type from Store Component
+#'
+#' @param component A store component object.
+#' @return `"s3"` or `"local"`.
+#' @keywords internal
+.datom_store_backend <- function(component) {
+  if (inherits(component, "datom_store_s3")) return("s3")
+  if (inherits(component, "datom_store_s3_creds")) return("s3")
+  if (inherits(component, "datom_store_local")) return("local")
+  cli::cli_abort("Unknown store component type: {.cls {class(component)}}")
+}
+
+
+#' Get Root from Store Component
+#'
+#' Returns the storage root: bucket name for S3, directory path for local.
+#'
+#' @param component A store component object.
+#' @return Root string.
+#' @keywords internal
+.datom_store_root <- function(component) {
+  if (inherits(component, "datom_store_s3")) return(component$bucket)
+  if (inherits(component, "datom_store_s3_creds")) return(NULL)
+  if (inherits(component, "datom_store_local")) return(component$path)
+  cli::cli_abort("Unknown store component type: {.cls {class(component)}}")
+}
+
+
+#' Get Region from Store Component
+#'
+#' Returns the AWS region for S3, NULL for local.
+#'
+#' @param component A store component object.
+#' @return Region string or NULL.
+#' @keywords internal
+.datom_store_region <- function(component) {
+  if (inherits(component, "datom_store_s3")) return(component$region)
+  if (inherits(component, "datom_store_s3_creds")) return(NULL)
+  if (inherits(component, "datom_store_local")) return(NULL)
+  cli::cli_abort("Unknown store component type: {.cls {class(component)}}")
+}
+
+
+#' Validate GitHub PAT
+#'
+#' Calls GitHub `GET /user` to verify the PAT is valid.
+#'
+#' @param pat GitHub personal access token.
+#' @param api_url GitHub API base URL (default `"https://api.github.com"`).
+#' @return A list with `login` and `id`.
+#' @keywords internal
+.datom_validate_github_pat <- function(pat, api_url = "https://api.github.com") {
+  tryCatch({
+    resp <- httr2::request(paste0(api_url, "/user")) |>
+      httr2::req_headers(
+        Authorization = paste("Bearer", pat),
+        Accept = "application/vnd.github+json"
+      ) |>
+      httr2::req_perform()
+
+    body <- httr2::resp_body_json(resp)
+    list(login = body$login, id = body$id)
+  }, error = function(e) {
+    cli::cli_abort(c(
+      "GitHub PAT validation failed.",
+      "x" = "GET /user returned an error.",
+      "i" = "Check that {.arg github_pat} is a valid token.",
+      "i" = "Underlying error: {conditionMessage(e)}"
+    ), parent = e)
+  })
+}
+
+
+#' Resolve the Local Path for the Governance Clone
+#'
+#' Returns the explicit `override` if supplied. Otherwise, places the gov clone
+#' as a sibling of `data_local_path` named after the basename of `gov_repo_url`
+#' (stripping a trailing `.git` suffix). This ensures the gov clone directory
+#' name reflects the gov repo's own identity, not any specific data project.
+#'
+#' @param data_local_path Absolute path to the local data repo directory.
+#' @param gov_repo_url GitHub URL of the governance repo
+#'   (e.g., `"https://github.com/org/acme-gov.git"`).
+#' @param override Optional explicit path. If non-NULL, returned as-is.
+#' @return Absolute path string for the gov clone.
+#' @keywords internal
+.datom_resolve_gov_local_path <- function(data_local_path, gov_repo_url,
+                                          override = NULL) {
+  if (!is.null(override)) return(fs::path_abs(override))
+
+  gov_name <- basename(gov_repo_url)
+  gov_name <- sub("\\.git$", "", gov_name)
+
+  sibling_dir <- dirname(fs::path_abs(data_local_path))
+  fs::path(sibling_dir, gov_name)
+}
+
+
+#' Resolve Gov Clone Path with Store Defaults
+#'
+#' Convenience wrapper that derives a gov clone path from a `datom_store`:
+#' returns the store's explicit `gov_local_path` if set; otherwise derives a
+#' sibling-of-data default from `gov_repo_url`; otherwise returns `NULL`.
+#'
+#' Centralises the three-arm pattern previously duplicated in
+#' `datom_init_repo()`, `datom_clone()`, and `.datom_get_conn_developer()`.
+#'
+#' @param store A `datom_store` object.
+#' @param data_local_path Absolute path to the local data repo (used to
+#'   compute the sibling default when no override is set).
+#' @return Character path string or `NULL`.
+#' @keywords internal
+.datom_resolve_or_default_gov_path <- function(store, data_local_path) {
+  if (!is.null(store$gov_local_path) && nzchar(store$gov_local_path)) {
+    return(as.character(fs::path_abs(store$gov_local_path)))
+  }
+  if (!is.null(store$gov_repo_url) && nzchar(store$gov_repo_url)) {
+    return(as.character(.datom_resolve_gov_local_path(
+      data_local_path = as.character(data_local_path),
+      gov_repo_url    = store$gov_repo_url
+    )))
+  }
+  NULL
+}
+
+
+# --- datom_store_s3: S3 component constructor ---------------------------------
+
+# --- GitHub repo creation -----------------------------------------------------
+
+#' Create a GitHub Repository
+#'
+#' Creates a new GitHub repository via the REST API. Handles both org and
+#' personal repos.
+#'
+#' Safety guard:
+#' - Repo doesn't exist → create, return URL
+#' - Repo exists + empty → reuse, return URL
+#' - Repo exists + has content → abort
+#'
+#' @param repo_name Repository name.
+#' @param pat GitHub personal access token.
+#' @param org GitHub organization. NULL for personal repos.
+#' @param private Whether the repo should be private (default TRUE).
+#' @param api_url GitHub API base URL (default `"https://api.github.com"`).
+#' @return The clone URL of the created/reused repository.
+#' @keywords internal
+.datom_create_github_repo <- function(repo_name, pat, org = NULL, private = TRUE,
+                                      api_url = "https://api.github.com") {
+  if (!is.character(repo_name) || length(repo_name) != 1L ||
+      is.na(repo_name) || !nzchar(repo_name)) {
+    cli::cli_abort("{.arg repo_name} must be a single non-empty string.")
+  }
+
+  headers <- list(
+    Authorization = paste("Bearer", pat),
+    Accept = "application/vnd.github+json"
+  )
+
+  # --- Check if repo exists ---------------------------------------------------
+  owner <- org %||% .datom_github_username(pat, api_url = api_url)
+  check_url <- paste0(api_url, "/repos/", owner, "/", repo_name)
+
+  existing <- tryCatch({
+    resp <- httr2::request(check_url) |>
+      httr2::req_headers(!!!headers) |>
+      httr2::req_error(is_error = function(resp) FALSE) |>
+      httr2::req_perform()
+
+    status <- httr2::resp_status(resp)
+
+    if (status == 200L) {
+      httr2::resp_body_json(resp)
+    } else {
+      NULL
+    }
+  }, error = function(e) {
+    cli::cli_abort(c(
+      "Failed to check if GitHub repo {.val {repo_name}} exists.",
+      "i" = "Underlying error: {conditionMessage(e)}"
+    ), parent = e)
+  })
+
+  if (!is.null(existing)) {
+    # Repo exists — check if it's empty (size == 0 and no default branch pushed)
+    is_empty <- identical(existing$size, 0L) || identical(existing$size, 0)
+
+    if (!is_empty) {
+      cli::cli_abort(c(
+        "GitHub repo {.val {owner}/{repo_name}} already exists and has content.",
+        "x" = "Cannot reuse a non-empty repo for a new datom project.",
+        "i" = "Use {.arg remote_url} to connect to an existing repo, or choose a different project name."
+      ))
+    }
+
+    cli::cli_alert_info("Reusing empty GitHub repo {.val {owner}/{repo_name}}.")
+    return(existing$clone_url)
+  }
+
+  # --- Create the repo --------------------------------------------------------
+  create_url <- if (!is.null(org)) {
+    paste0(api_url, "/orgs/", org, "/repos")
+  } else {
+    paste0(api_url, "/user/repos")
+  }
+
+  body <- list(
+    name = repo_name,
+    private = private,
+    auto_init = FALSE,
+    description = paste("datom project:", repo_name)
+  )
+
+  tryCatch({
+    resp <- httr2::request(create_url) |>
+      httr2::req_headers(!!!headers) |>
+      httr2::req_body_json(body) |>
+      httr2::req_method("POST") |>
+      httr2::req_perform()
+
+    result <- httr2::resp_body_json(resp)
+    cli::cli_alert_success("Created GitHub repo {.val {owner}/{repo_name}}.")
+    result$clone_url
+  }, error = function(e) {
+    cli::cli_abort(c(
+      "Failed to create GitHub repo {.val {repo_name}}.",
+      "i" = "Underlying error: {conditionMessage(e)}"
+    ), parent = e)
+  })
+}
+
+
+#' Delete a GitHub Repository
+#'
+#' Deletes a GitHub repository via the REST API. Requires a PAT with the
+#' `delete_repo` scope.
+#'
+#' @param repo_full Repository in `"owner/repo"` form.
+#' @param pat GitHub personal access token (must have `delete_repo` scope).
+#' @param api_url GitHub API base URL (default `"https://api.github.com"`).
+#' @return Invisible `TRUE` on success; aborts on failure.
+#' @keywords internal
+.datom_delete_github_repo <- function(repo_full, pat,
+                                      api_url = "https://api.github.com") {
+  if (!is.character(repo_full) || length(repo_full) != 1L ||
+      is.na(repo_full) || !nzchar(repo_full) || !grepl("/", repo_full)) {
+    cli::cli_abort("{.arg repo_full} must be in {.code owner/repo} form.")
+  }
+  if (!is.character(pat) || length(pat) != 1L ||
+      is.na(pat) || !nzchar(pat)) {
+    cli::cli_abort("{.arg pat} must be a single non-empty string.")
+  }
+
+  url <- paste0(api_url, "/repos/", repo_full)
+  headers <- list(
+    Authorization = paste("Bearer", pat),
+    Accept = "application/vnd.github+json"
+  )
+
+  tryCatch({
+    httr2::request(url) |>
+      httr2::req_headers(!!!headers) |>
+      httr2::req_method("DELETE") |>
+      httr2::req_perform()
+    invisible(TRUE)
+  }, error = function(e) {
+    msg <- conditionMessage(e)
+    hint <- if (grepl("403", msg)) {
+      "PAT may be missing the {.code delete_repo} scope."
+    } else if (grepl("404", msg)) {
+      "Repository not found (already deleted?)."
+    } else {
+      "Check network connectivity and PAT validity."
+    }
+    cli::cli_abort(c(
+      "Failed to delete GitHub repo {.val {repo_full}}.",
+      "i" = "Underlying error: {msg}",
+      "i" = hint
+    ), parent = e)
+  })
+}
+
+
+#' Get GitHub Username from PAT
+#'
+#' Calls `GET /user` to get the authenticated user's login.
+#'
+#' @param pat GitHub personal access token.
+#' @param api_url GitHub API base URL (default `"https://api.github.com"`).
+#' @return Username string.
+#' @keywords internal
+.datom_github_username <- function(pat, api_url = "https://api.github.com") {
+  # Reuse existing validation if identity is cached, but this is a lightweight
+
+  # helper for repo creation flow
+  resp <- httr2::request(paste0(api_url, "/user")) |>
+    httr2::req_headers(
+      Authorization = paste("Bearer", pat),
+      Accept = "application/vnd.github+json"
+    ) |>
+    httr2::req_perform()
+
+  httr2::resp_body_json(resp)$login
+}
+
+
+# --- datom_store_s3: S3 component constructor ---------------------------------
+
+#' Create an S3 Store Component
+#'
+#' Constructs a validated S3 storage component for use as either the governance
+#' or data component of a `datom_store`. Validates credentials and bucket access
+#' at construction time (unless `validate = FALSE`).
+#'
+#' @param bucket S3 bucket name.
+#' @param prefix S3 key prefix (e.g., `"project/"`). NULL for no prefix.
+#' @param region AWS region (default `"us-east-1"`).
+#' @param access_key AWS access key ID.
+#' @param secret_key AWS secret access key.
+#' @param session_token Optional AWS session token (for temporary credentials).
+#' @param validate If `TRUE` (default), validate credentials and bucket access
+#'   at construction time. Set to `FALSE` for tests or offline use.
+#'
+#' @return A `datom_store_s3` object.
+#' @export
+#'
+#' @examples
+#' s3 <- datom_store_s3(
+#'   bucket = "my-datom-bucket",
+#'   prefix = "project/",
+#'   region = "us-east-1",
+#'   access_key = "AKIAIOSFODNN7EXAMPLE",
+#'   secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+#'   validate = FALSE
+#' )
+#' s3
+#' is_datom_store_s3(s3)
+datom_store_s3 <- function(bucket,
+                           prefix = NULL,
+                           region = "us-east-1",
+                           access_key,
+                           secret_key,
+                           session_token = NULL,
+                           validate = TRUE) {
+
+
+  # --- Structural validation --------------------------------------------------
+  if (!is.character(bucket) || length(bucket) != 1L ||
+      is.na(bucket) || !nzchar(bucket)) {
+    cli::cli_abort("{.arg bucket} must be a single non-empty string.")
+  }
+
+  if (!is.null(prefix)) {
+    if (!is.character(prefix) || length(prefix) != 1L || is.na(prefix)) {
+      cli::cli_abort("{.arg prefix} must be a single string or NULL.")
+    }
+  }
+
+  if (!is.character(region) || length(region) != 1L ||
+      is.na(region) || !nzchar(region)) {
+    cli::cli_abort("{.arg region} must be a single non-empty string.")
+  }
+
+  if (!is.character(access_key) || length(access_key) != 1L ||
+      is.na(access_key) || !nzchar(access_key)) {
+    cli::cli_abort("{.arg access_key} must be a single non-empty string.")
+  }
+
+  if (!is.character(secret_key) || length(secret_key) != 1L ||
+      is.na(secret_key) || !nzchar(secret_key)) {
+    cli::cli_abort("{.arg secret_key} must be a single non-empty string.")
+  }
+
+  if (!is.null(session_token)) {
+    if (!is.character(session_token) || length(session_token) != 1L ||
+        is.na(session_token) || !nzchar(session_token)) {
+      cli::cli_abort("{.arg session_token} must be a single non-empty string or NULL.")
+    }
+  }
+
+  # --- Connectivity validation ------------------------------------------------
+  if (isTRUE(validate)) {
+    .datom_validate_s3_store(
+      access_key = access_key,
+      secret_key = secret_key,
+      session_token = session_token,
+      region = region,
+      bucket = bucket
+    )
+  }
+
+  structure(
+    list(
+      bucket = bucket,
+      prefix = prefix,
+      region = region,
+      access_key = access_key,
+      secret_key = secret_key,
+      session_token = session_token,
+      validated = isTRUE(validate)
+    ),
+    class = "datom_store_s3"
+  )
+}
+
+
+#' Check if Object is an S3 Store Component
+#'
+#' @param x Object to test.
+#' @return TRUE or FALSE.
+#' @export
+#'
+#' @examples
+#' s3 <- datom_store_s3(
+#'   bucket = "my-datom-bucket",
+#'   access_key = "AKIAIOSFODNN7EXAMPLE",
+#'   secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+#'   validate = FALSE
+#' )
+#' is_datom_store_s3(s3)
+#' is_datom_store_s3("not a store")
+is_datom_store_s3 <- function(x) {
+  inherits(x, "datom_store_s3")
+}
+
+
+#' Print an S3 Store Component
+#'
+#' Displays store configuration with masked secrets.
+#'
+#' @param x A `datom_store_s3` object.
+#' @param ... Ignored.
+#' @return Invisible `x`.
+#' @export
+#'
+#' @examples
+#' s3 <- datom_store_s3(
+#'   bucket = "my-datom-bucket",
+#'   access_key = "AKIAIOSFODNN7EXAMPLE",
+#'   secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+#'   validate = FALSE
+#' )
+#' print(s3)
+print.datom_store_s3 <- function(x, ...) {
+  cli::cli_h3("datom S3 store component")
+  cli::cli_ul()
+  cli::cli_li("Bucket: {.val {x$bucket}}")
+
+  if (!is.null(x$prefix)) {
+    cli::cli_li("Prefix: {.val {x$prefix}}")
+  }
+
+  cli::cli_li("Region: {.val {x$region}}")
+  cli::cli_li("Access key: {.val {(.datom_mask_secret(x$access_key))}}")
+  cli::cli_li("Secret key: {.val {(.datom_mask_secret(x$secret_key, reveal_prefix = FALSE))}}")
+
+  if (!is.null(x$session_token)) {
+    cli::cli_li("Session token: {.val {(.datom_mask_secret(x$session_token, reveal_prefix = FALSE))}}")
+  }
+
+  cli::cli_li("Validated: {.val {x$validated}}")
+  cli::cli_end()
+  invisible(x)
+}
+
+
+# --- datom_store_s3_creds: credentials-only S3 component constructor ---------
+
+#' Create a Credentials-Only S3 Store Component
+#'
+#' Constructs an S3 store component that carries only AWS credentials -- no
+#' bucket, prefix, or region. The data location is resolved at connection time
+#' from `ref.json` stored in the governance repo. This is the recommended
+#' construction style for readers when a governance store is in place.
+#'
+#' A `datom_store_s3_creds` component **must** be paired with a governance
+#' component inside `datom_store()`. Attempting to create a composite store
+#' without governance will abort with a clear message.
+#'
+#' @param access_key AWS access key ID.
+#' @param secret_key AWS secret access key.
+#' @param session_token Optional AWS session token (for temporary credentials).
+#'
+#' @return A `datom_store_s3_creds` object.
+#' @export
+#'
+#' @examples
+#' creds <- datom_store_s3_creds(
+#'   access_key = "AKIAIOSFODNN7EXAMPLE",
+#'   secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+#' )
+#' creds
+#' is_datom_store_s3_creds(creds)
+datom_store_s3_creds <- function(access_key,
+                                 secret_key,
+                                 session_token = NULL) {
+
+  if (!is.character(access_key) || length(access_key) != 1L ||
+      is.na(access_key) || !nzchar(access_key)) {
+    cli::cli_abort("{.arg access_key} must be a single non-empty string.")
+  }
+
+  if (!is.character(secret_key) || length(secret_key) != 1L ||
+      is.na(secret_key) || !nzchar(secret_key)) {
+    cli::cli_abort("{.arg secret_key} must be a single non-empty string.")
+  }
+
+  if (!is.null(session_token)) {
+    if (!is.character(session_token) || length(session_token) != 1L ||
+        is.na(session_token) || !nzchar(session_token)) {
+      cli::cli_abort("{.arg session_token} must be a single non-empty string or NULL.")
+    }
+  }
+
+  structure(
+    list(
+      access_key    = access_key,
+      secret_key    = secret_key,
+      session_token = session_token
+    ),
+    class = "datom_store_s3_creds"
+  )
+}
+
+
+#' Check if Object is a Credentials-Only S3 Store Component
+#'
+#' @param x Object to test.
+#' @return TRUE or FALSE.
+#' @export
+#'
+#' @examples
+#' creds <- datom_store_s3_creds(
+#'   access_key = "AKIAIOSFODNN7EXAMPLE",
+#'   secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+#' )
+#' is_datom_store_s3_creds(creds)
+#' is_datom_store_s3_creds("not a store")
+is_datom_store_s3_creds <- function(x) {
+  inherits(x, "datom_store_s3_creds")
+}
+
+
+#' Print a Credentials-Only S3 Store Component
+#'
+#' Displays masked credentials and a note that location is resolved from
+#' ref.json at connection time.
+#'
+#' @param x A `datom_store_s3_creds` object.
+#' @param ... Ignored.
+#' @return Invisible `x`.
+#' @export
+#'
+#' @examples
+#' creds <- datom_store_s3_creds(
+#'   access_key = "AKIAIOSFODNN7EXAMPLE",
+#'   secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+#' )
+#' print(creds)
+print.datom_store_s3_creds <- function(x, ...) {
+  cli::cli_h3("datom S3 credentials-only store component")
+  cli::cli_ul()
+  cli::cli_li("Bucket / prefix / region: {.emph <resolved from ref.json>}")
+  cli::cli_li("Access key: {.val {(.datom_mask_secret(x$access_key))}}")
+  cli::cli_li("Secret key: {.val {(.datom_mask_secret(x$secret_key, reveal_prefix = FALSE))}}")
+  if (!is.null(x$session_token)) {
+    cli::cli_li("Session token: {.val {(.datom_mask_secret(x$session_token, reveal_prefix = FALSE))}}")
+  }
+  cli::cli_end()
+  invisible(x)
+}
+
+
+# --- datom_store_local: local filesystem component constructor ----------------
+
+#' Create a Local Filesystem Store Component
+#'
+#' Constructs a validated local filesystem storage component for use as either
+#' the governance or data component of a `datom_store`. Validates that the path
+#' exists (or is creatable) and is writable.
+#'
+#' @param path Directory path for the store root.
+#' @param prefix Key prefix within the root (e.g., `"project/"`). NULL for no
+#'   prefix.
+#' @param validate If `TRUE` (default), validate that `path` exists and is
+#'   writable. Set to `FALSE` for tests or deferred creation.
+#'
+#' @return A `datom_store_local` object.
+#' @export
+#'
+#' @examples
+#' tmp <- tempfile("datom_store_")
+#' store <- datom_store_local(path = tmp, validate = TRUE)
+#' store
+#' is_datom_store_local(store)
+#' unlink(tmp, recursive = TRUE)
+datom_store_local <- function(path,
+                              prefix = NULL,
+                              validate = TRUE) {
+
+  # --- Structural validation --------------------------------------------------
+  if (!is.character(path) || length(path) != 1L ||
+      is.na(path) || !nzchar(path)) {
+    cli::cli_abort("{.arg path} must be a single non-empty string.")
+  }
+
+  if (!is.null(prefix)) {
+    if (!is.character(prefix) || length(prefix) != 1L || is.na(prefix)) {
+      cli::cli_abort("{.arg prefix} must be a single string or NULL.")
+    }
+  }
+
+  # Normalize the path
+  path <- fs::path_abs(path)
+
+  # --- Directory validation ---------------------------------------------------
+  if (isTRUE(validate)) {
+    if (!fs::dir_exists(path)) {
+      # Try to create it
+      tryCatch({
+        fs::dir_create(path, recurse = TRUE)
+        cli::cli_alert_info("Created store directory {.path {path}}.")
+      }, error = function(e) {
+        cli::cli_abort(c(
+          "Store directory {.path {path}} does not exist and could not be created.",
+          "i" = "Underlying error: {conditionMessage(e)}"
+        ), parent = e)
+      })
+    }
+
+    # Check writable
+    if (!fs::file_access(path, mode = "write")) {
+      cli::cli_abort(c(
+        "Store directory {.path {path}} is not writable.",
+        "i" = "Check filesystem permissions."
+      ))
+    }
+  }
+
+  structure(
+    list(
+      path = as.character(path),
+      prefix = prefix,
+      validated = isTRUE(validate)
+    ),
+    class = "datom_store_local"
+  )
+}
+
+
+#' Check if Object is a Local Store Component
+#'
+#' @param x Object to test.
+#' @return TRUE or FALSE.
+#' @export
+#'
+#' @examples
+#' tmp <- tempfile("datom_store_")
+#' store <- datom_store_local(path = tmp, validate = TRUE)
+#' is_datom_store_local(store)
+#' is_datom_store_local("not a store")
+#' unlink(tmp, recursive = TRUE)
+is_datom_store_local <- function(x) {
+  inherits(x, "datom_store_local")
+}
+
+
+#' Print a Local Store Component
+#'
+#' Displays store configuration.
+#'
+#' @param x A `datom_store_local` object.
+#' @param ... Ignored.
+#' @return Invisible `x`.
+#' @export
+#'
+#' @examples
+#' tmp <- tempfile("datom_store_")
+#' store <- datom_store_local(path = tmp, validate = TRUE)
+#' print(store)
+#' unlink(tmp, recursive = TRUE)
+print.datom_store_local <- function(x, ...) {
+  cli::cli_h3("datom local store component")
+  cli::cli_ul()
+  cli::cli_li("Path: {.path {x$path}}")
+
+  if (!is.null(x$prefix)) {
+    cli::cli_li("Prefix: {.val {x$prefix}}")
+  }
+
+  cli::cli_li("Validated: {.val {x$validated}}")
+  cli::cli_end()
+  invisible(x)
+}
+
+
+# --- Internal helpers ---------------------------------------------------------
+
+#' Mask a Secret for Display
+#'
+#' By default shows the first 4 characters followed by `****`. That prefix is
+#' fine for GitHub PATs (the `ghp_`/`github_pat_` prefix is a public type tag),
+#' but for AWS secret access keys and session tokens the first characters are
+#' real entropy -- pass `reveal_prefix = FALSE` to mask them fully.
+#'
+#' @param secret A string.
+#' @param reveal_prefix If `TRUE` (default), reveal the first 4 characters. If
+#'   `FALSE`, mask the whole secret (no characters revealed).
+#' @return Masked string.
+#' @keywords internal
+.datom_mask_secret <- function(secret, reveal_prefix = TRUE) {
+  if (is.null(secret) || !nzchar(secret)) return("(not set)")
+  if (!isTRUE(reveal_prefix)) return("****")
+  n <- nchar(secret)
+  if (n <= 4L) return("****")
+  paste0(substr(secret, 1L, 4L), "****")
+}
+
+
+#' Validate S3 Store Connectivity
+#'
+#' Checks bucket access via HeadBucket. This validates both credentials and
+#' bucket existence/permissions in a single call.
+#'
+#' @param access_key AWS access key ID.
+#' @param secret_key AWS secret access key.
+#' @param session_token Optional session token.
+#' @param region AWS region.
+#' @param bucket Bucket name.
+#' @return Invisible TRUE on success.
+#' @keywords internal
+.datom_validate_s3_store <- function(access_key, secret_key, session_token,
+                                     region, bucket) {
+
+  creds <- list(
+    access_key_id = access_key,
+    secret_access_key = secret_key
+  )
+  if (!is.null(session_token)) {
+    creds$session_token <- session_token
+  }
+
+  config <- list(
+    credentials = list(creds = creds),
+    region = region
+  )
+
+  # --- HeadBucket (validates credentials + bucket access) ---------------------
+  tryCatch({
+    s3 <- paws.storage::s3(config = config)
+    s3$head_bucket(Bucket = bucket)
+  }, error = function(e) {
+    msg <- conditionMessage(e)
+    if (grepl("403|Forbidden|AccessDenied", msg)) {
+      cli::cli_abort(c(
+        "AWS credentials are invalid or lack access to bucket {.val {bucket}}.",
+        "x" = "HeadBucket returned 403 / Access Denied.",
+        "i" = "Check {.arg access_key}, {.arg secret_key}, and IAM permissions."
+      ), parent = e)
+    } else if (grepl("404|NoSuchBucket|NotFound", msg)) {
+      cli::cli_abort(c(
+        "Bucket {.val {bucket}} does not exist.",
+        "x" = "HeadBucket returned 404 / Not Found.",
+        "i" = "Create the bucket first or check the bucket name."
+      ), parent = e)
+    } else {
+      cli::cli_abort(c(
+        "Failed to verify access to bucket {.val {bucket}}.",
+        "i" = "Underlying error: {conditionMessage(e)}"
+      ), parent = e)
+    }
+  })
+
+  invisible(TRUE)
+}

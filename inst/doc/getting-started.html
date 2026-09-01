@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Getting Started</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Getting Started</h1>
+
+
+
+<style type="text/css">
+.datom-callout {
+border-left: 4px solid;
+border-radius: 0.25rem;
+padding: 0.75rem 1rem;
+margin-bottom: 1rem;
+clear: both;
+}
+.datom-callout-goal {
+border-color: var(--bs-info, #0dcaf0);
+}
+.datom-callout-tip {
+border-color: var(--bs-success, #198754);
+}
+.datom-callout-warn {
+border-color: var(--bs-warning, #ffc107);
+}
+</style>
+<div class="datom-callout datom-callout-goal" markdown="1">
+<p><strong>Goal:</strong> Stand up a versioned datom project using a
+local filesystem store and onboard data using <code>datom_sync()</code>
+– the primary workflow for bringing files into datom. By the end of this
+article the project holds multiple versioned tables, and you have seen:
+syncing one file, updating it, the idempotent no-op, and syncing a
+batch. No AWS account needed. The same workflow extends unchanged to S3
+(see <a href="start-on-s3.html">Starting on S3</a>).</p>
+</div>
+<blockquote>
+<p><strong>Already done the two-minute tour in the README?</strong> The
+tour and this article cover the same ground. If your project initialized
+cleanly and <code>datom_read()</code> returned <code>TRUE</code>, you
+can jump straight to <a href="start-on-s3.html">Starting on S3</a> or <a href="source-lineage.html">Tracing Data Lineage</a>.</p>
+</blockquote>
+<p>You are the data engineer for <strong>STUDY-001</strong>, a Phase II
+clinical trial. EDC extracts land as files in a staging folder; your job
+is to onboard them into a <strong>shared, versioned data space</strong>
+– multiple engineers writing new extracts, multiple analysts reading any
+version, all coordinated through a single git history. Every sync is a
+git commit; every read resolves to an exact version SHA. No one can
+silently overwrite history, and anyone with access to the repo can
+reproduce any past analysis by pinning to a SHA.</p>
+<p>This first article walks the local-only path. The same workflow –
+same functions, same commands – works for a shared S3 space: you build
+an S3 store instead of a local one (see <a href="start-on-s3.html">Starting on S3</a>).</p>
+<div class="datom-callout datom-callout-tip" markdown="1">
+<p><strong>Two locations, two roles:</strong></p>
+<ul>
+<li><strong>Input folder</strong> (mutable, disposable) – a landing zone
+for data not yet onboarded. Files here can be overwritten or deleted
+freely. Re-syncing already-onboarded content is a no-op. Nothing here is
+the source of truth.</li>
+<li><strong>Storage</strong> (immutable, permanent) – once
+<code>datom_sync()</code> onboards a file, storage holds the versioned,
+content-addressed copy. The original input file is no longer needed; the
+onboarded data stands on its own.</li>
+</ul>
+</div>
+<div id="requirements" class="section level2">
+<h2>Requirements</h2>
+<p>datom keeps <strong>metadata in git</strong> (diff-able, auditable)
+and <strong>data wherever you tell it to live</strong> (S3 or a local
+directory). Even when data lives on a local filesystem, metadata still
+goes to a git remote – that is how version history stays reproducible
+across machines.</p>
+<p>You need two things, both one-time:</p>
+<ul>
+<li><strong>A GitHub account</strong> with a personal access token (PAT)
+scoped to <code>repo</code>. Store it in your OS keychain once with
+<code>keyring::key_set(&quot;GITHUB_PAT&quot;)</code>; every article after this
+picks it up automatically. Using <code>keyring</code> keeps the PAT out
+of your code and command history.</li>
+<li><strong>The <code>gh</code> CLI is not required</strong> – datom
+creates GitHub repos through the GitHub REST API directly using your
+PAT.</li>
+</ul>
+<p>No AWS, no cloud account, no governance repo for this article.</p>
+<div class="datom-callout datom-callout-tip" markdown="1">
+<p><strong>Verify your keyring setup</strong> before continuing:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">nzchar</span>(keyring<span class="sc">::</span><span class="fu">key_get</span>(<span class="st">&quot;GITHUB_PAT&quot;</span>))   <span class="co"># should return TRUE</span></span></code></pre></div>
+<p>If it errors, set the PAT with
+<code>keyring::key_set(&quot;GITHUB_PAT&quot;)</code> first.</p>
+</div>
+</div>
+<div id="configure-your-environment" class="section level2">
+<h2>Configure your environment</h2>
+<p>Everything machine-specific lives in one block. Set these values once
+for your environment; every code chunk after this is copy/paste
+as-is.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">library</span>(datom)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="fu">library</span>(fs)</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a><span class="co"># --- Settings you control --------------------------------------------------</span></span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>project_name <span class="ot">&lt;-</span> <span class="st">&quot;STUDY_001&quot;</span>          <span class="co"># logical project name (recorded in metadata)</span></span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>repo_name    <span class="ot">&lt;-</span> <span class="st">&quot;study-001-data&quot;</span>     <span class="co"># GitHub repo name for the metadata repo</span></span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a><span class="co"># dev_dir  -- your local clone of the metadata git repo (stays on your machine)</span></span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a><span class="co"># data_dir -- where parquet bytes are written; point at a shared location</span></span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a><span class="co">#             (network mount, or an S3 store) for a real team space. Temp dirs</span></span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a><span class="co">#             are used here so the article leaves nothing behind.</span></span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a>dev_dir  <span class="ot">&lt;-</span> <span class="fu">path</span>(<span class="fu">tempdir</span>(), <span class="st">&quot;study_001_dev&quot;</span>)</span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a>data_dir <span class="ot">&lt;-</span> <span class="fu">path</span>(<span class="fu">tempdir</span>(), <span class="st">&quot;study_001_data&quot;</span>)</span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a></span>
+<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a><span class="co"># Your GitHub personal access token (PAT), scoped to `repo`. Stored once in your</span></span>
+<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a><span class="co"># OS keychain with keyring::key_set(&quot;GITHUB_PAT&quot;); read here by name so the</span></span>
+<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a><span class="co"># token never appears in your code or command history.</span></span>
+<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a>github_pat <span class="ot">&lt;-</span> keyring<span class="sc">::</span><span class="fu">key_get</span>(<span class="st">&quot;GITHUB_PAT&quot;</span>)</span>
+<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a><span class="co"># ---------------------------------------------------------------------------</span></span>
+<span id="cb2-20"><a href="#cb2-20" tabindex="-1"></a></span>
+<span id="cb2-21"><a href="#cb2-21" tabindex="-1"></a><span class="fu">dir_create</span>(data_dir)</span></code></pre></div>
+</div>
+<div id="build-a-store" class="section level2">
+<h2>Build a store</h2>
+<p>A <strong>store</strong> bundles the addresses datom needs: where
+parquet bytes go and the GitHub PAT that lets datom push metadata.
+Governance is not attached (<code>governance = NULL</code>); it is
+opt-in and added later through the governance companion package when
+sharing across a portfolio matters.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>store <span class="ot">&lt;-</span> <span class="fu">datom_store</span>(</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>  <span class="at">governance =</span> <span class="cn">NULL</span>,</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a>  <span class="at">data       =</span> <span class="fu">datom_store_local</span>(<span class="at">path =</span> data_dir),</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a>  <span class="at">github_pat =</span> github_pat</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="initialize-the-data-repository" class="section level2">
+<h2>Initialize the data repository</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">datom_init_repo</span>(</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>  <span class="at">path         =</span> dev_dir,</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>  <span class="at">project_name =</span> project_name,</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>  <span class="at">store        =</span> store,</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>  <span class="at">create_repo  =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>  <span class="at">repo_name    =</span> repo_name</span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>)</span></code></pre></div>
+<p>This creates a GitHub repo, clones it into <code>dev_dir</code>, and
+commits a <code>project.yaml</code> that records the project’s data
+store address. The git repo is now live on GitHub. No parquet data is
+pushed to GitHub – only the metadata commits travel over the wire; the
+parquet bytes stay in <code>data_dir</code>.</p>
+<p><code>datom_init_repo()</code> also creates an
+<code>input_files/</code> directory inside the clone. It is gitignored –
+files placed there are never committed. It is the inbox for
+<code>datom_sync()</code>.</p>
+<p><code>datom_sync()</code> onboards flat tabular files:
+<code>csv</code>, <code>tsv</code>, <code>txt</code>, <code>psv</code>,
+<code>parquet</code>, <code>sas7bdat</code>, <code>xpt</code>,
+<code>sav</code>, <code>zsav</code>, <code>por</code>, <code>dta</code>,
+<code>xls</code>, <code>xlsx</code>. Anything else in the inbox (an
+<code>.rds</code>, a <code>.json</code>) is reported as
+<code>unsupported_format</code> and skipped without blocking its
+neighbours – see <a href="design-version-shas.html">the ingestion
+allowlist</a> for why, and for the one-line escape hatch.</p>
+<p>Take a moment to inspect the repo structure before moving on:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="co"># Metadata layout in the git clone (note input_files/ -- your sync inbox)</span></span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>fs<span class="sc">::</span><span class="fu">dir_tree</span>(dev_dir)</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co"># Storage layout (empty until first sync)</span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>fs<span class="sc">::</span><span class="fu">dir_tree</span>(data_dir)</span></code></pre></div>
+</div>
+<div id="connect" class="section level2">
+<h2>Connect</h2>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>conn <span class="ot">&lt;-</span> <span class="fu">datom_get_conn</span>(<span class="at">path =</span> dev_dir, <span class="at">store =</span> store)</span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="fu">print</span>(conn)</span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a><span class="co">#&gt; -- datom connection</span></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a><span class="co">#&gt; * Project: &quot;STUDY_001&quot;</span></span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a><span class="co">#&gt; * Role: &quot;developer&quot;</span></span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a><span class="co">#&gt; * Backend: &quot;local&quot;</span></span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a><span class="co">#&gt; * Root: &quot;/tmp/.../study_001_data&quot;</span></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="co">#&gt; * Path: &quot;/tmp/.../study_001_dev&quot;</span></span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a><span class="co">#&gt; * Governance: not attached</span></span></code></pre></div>
+</div>
+<div id="step-1-sync-one-file" class="section level2">
+<h2>Step 1: Sync one file</h2>
+<p>The month-1 extract has just landed – a single demographics CSV. Drop
+it in the input folder:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="co"># The input folder lives inside the git clone but is gitignored.</span></span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a><span class="co"># Files placed here are the raw material for datom_sync().</span></span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>input_dir <span class="ot">&lt;-</span> <span class="fu">path</span>(dev_dir, <span class="st">&quot;input_files&quot;</span>)</span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a><span class="fu">write.csv</span>(</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>  <span class="fu">datom_example_data</span>(<span class="st">&quot;dm&quot;</span>, <span class="at">cutoff_date =</span> <span class="st">&quot;2026-01-28&quot;</span>),</span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a>  <span class="fu">path</span>(input_dir, <span class="st">&quot;dm.csv&quot;</span>),</span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="cn">FALSE</span></span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a>)</span></code></pre></div>
+<p>Scan the folder to build a sync manifest – datom detects what is new,
+changed, or unchanged relative to what has already been onboarded:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(conn)</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a><span class="co">#&gt; i Scanned 1 file: 1 new, 0 changed, 0 unchanged.</span></span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>manifest</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a><span class="co">#&gt;   name  file         format original_file_sha status</span></span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a><span class="co">#&gt; 1   dm  .../dm.csv   csv    7a3b...           new</span></span></code></pre></div>
+<p>Now onboard it:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="fu">datom_sync</span>(conn, manifest)</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a><span class="co">#&gt; i Syncing 1 table...</span></span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a><span class="co">#&gt; v dm synced (new).</span></span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a><span class="co">#&gt; i Sync complete: 1 succeeded, 0 failed, 0 skipped.</span></span></code></pre></div>
+<p>Three things just happened, in this order:</p>
+<ol style="list-style-type: decimal">
+<li>The CSV was read and serialized to parquet in <code>data_dir</code>.
+<strong>No data was pushed to the GitHub repo</strong> – parquet bytes
+never leave your local store.</li>
+<li><code>metadata.json</code> and <code>version_history.json</code>
+were updated in the git clone and committed.</li>
+<li>The metadata commit was pushed to GitHub. The version is now
+auditable from any machine with repo access, but the raw data stays
+where you put it.</li>
+</ol>
+<p>Confirm with <code>datom_list()</code>, <code>datom_history()</code>,
+and a round-trip read:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a><span class="fu">datom_list</span>(conn)</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a><span class="co">#&gt;   name current_version current_data_sha last_updated</span></span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a><span class="co">#&gt; 1   dm        a8ee7a31         4b6d0a7e 2026-01-28T...</span></span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a></span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a><span class="fu">datom_history</span>(conn, <span class="st">&quot;dm&quot;</span>)</span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a><span class="co">#&gt;    version  data_sha timestamp            message</span></span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a><span class="co">#&gt; 1 a8ee7a31 4b6d0a7e 2026-01-28T09:02:11Z dm synced from dm.csv</span></span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a></span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a><span class="fu">datom_read</span>(conn, <span class="st">&quot;dm&quot;</span>)</span></code></pre></div>
+<p><strong>Key point:</strong> the input file is now disposable. Delete
+it and the data is still accessible from storage – storage is the source
+of truth, not the input folder:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">file_delete</span>(<span class="fu">path</span>(input_dir, <span class="st">&quot;dm.csv&quot;</span>))</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a><span class="fu">datom_read</span>(conn, <span class="st">&quot;dm&quot;</span>)   <span class="co"># still works -- storage is the permanent record</span></span></code></pre></div>
+</div>
+<div id="step-2-update-one-file" class="section level2">
+<h2>Step 2: Update one file</h2>
+<p>A month passes. The month-2 extract arrives with new subjects.
+Overwrite the input file and sync again:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="fu">write.csv</span>(</span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  <span class="fu">datom_example_data</span>(<span class="st">&quot;dm&quot;</span>, <span class="at">cutoff_date =</span> <span class="st">&quot;2026-02-28&quot;</span>),</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>  <span class="fu">path</span>(input_dir, <span class="st">&quot;dm.csv&quot;</span>),</span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="cn">FALSE</span></span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a>)</span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a></span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(conn)</span>
+<span id="cb12-8"><a href="#cb12-8" tabindex="-1"></a><span class="co">#&gt; i Scanned 1 file: 0 new, 1 changed, 0 unchanged.</span></span>
+<span id="cb12-9"><a href="#cb12-9" tabindex="-1"></a></span>
+<span id="cb12-10"><a href="#cb12-10" tabindex="-1"></a><span class="fu">datom_sync</span>(conn, manifest)</span>
+<span id="cb12-11"><a href="#cb12-11" tabindex="-1"></a><span class="co">#&gt; i Syncing 1 table...</span></span>
+<span id="cb12-12"><a href="#cb12-12" tabindex="-1"></a><span class="co">#&gt; v dm synced (changed).</span></span>
+<span id="cb12-13"><a href="#cb12-13" tabindex="-1"></a><span class="co">#&gt; i Sync complete: 1 succeeded, 0 failed, 0 skipped.</span></span></code></pre></div>
+<p>The table now has two versions. The previous version is still intact
+– nothing was overwritten:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a><span class="fu">datom_history</span>(conn, <span class="st">&quot;dm&quot;</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a><span class="co">#&gt;    version  data_sha timestamp            message</span></span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a><span class="co">#&gt; 1 5c1a3f7b 9e8f1c2d 2026-02-28T10:14:02Z dm synced from dm.csv</span></span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a><span class="co">#&gt; 2 a8ee7a31 4b6d0a7e 2026-01-28T09:02:11Z dm synced from dm.csv</span></span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a></span>
+<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a><span class="co"># Read the current version (month 2)</span></span>
+<span id="cb13-7"><a href="#cb13-7" tabindex="-1"></a><span class="fu">nrow</span>(<span class="fu">datom_read</span>(conn, <span class="st">&quot;dm&quot;</span>))</span>
+<span id="cb13-8"><a href="#cb13-8" tabindex="-1"></a><span class="co">#&gt; [1] 16</span></span>
+<span id="cb13-9"><a href="#cb13-9" tabindex="-1"></a></span>
+<span id="cb13-10"><a href="#cb13-10" tabindex="-1"></a><span class="co"># Read the prior version (month 1) by its SHA</span></span>
+<span id="cb13-11"><a href="#cb13-11" tabindex="-1"></a>hist   <span class="ot">&lt;-</span> <span class="fu">datom_history</span>(conn, <span class="st">&quot;dm&quot;</span>)</span>
+<span id="cb13-12"><a href="#cb13-12" tabindex="-1"></a>m1_ver <span class="ot">&lt;-</span> hist<span class="sc">$</span>version[<span class="fu">nrow</span>(hist)]   <span class="co"># oldest row is the month-1 version</span></span>
+<span id="cb13-13"><a href="#cb13-13" tabindex="-1"></a><span class="fu">nrow</span>(<span class="fu">datom_read</span>(conn, <span class="st">&quot;dm&quot;</span>, <span class="at">version =</span> m1_ver))</span>
+<span id="cb13-14"><a href="#cb13-14" tabindex="-1"></a><span class="co">#&gt; [1] 4</span></span></code></pre></div>
+<p>Both versions coexist; any historical snapshot is retrievable by its
+SHA. This is the property that downstream statisticians, regulators, and
+auditors rely on.</p>
+</div>
+<div id="step-3-no-op-repeat" class="section level2">
+<h2>Step 3: No-op repeat</h2>
+<p>Run <code>datom_sync()</code> again with nothing changed:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(conn)</span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a><span class="co">#&gt; i Scanned 1 file: 0 new, 0 changed, 1 unchanged.</span></span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a><span class="fu">datom_sync</span>(conn, manifest)</span>
+<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a><span class="co">#&gt; i No new or changed files. Nothing to sync.</span></span></code></pre></div>
+<p>Re-syncing identical content is a no-op. This is what makes sync safe
+to run in a scheduled job or pipeline – accidental re-runs cost nothing
+and pollute no history. The same idempotency applies to
+<code>datom_write()</code>: writing an identical data frame to the same
+table name detects the duplicate and skips.</p>
+<p>Idempotency here is stronger than “the file’s bytes are unchanged”.
+If a source system <strong>re-exports the same data</strong> – new
+export timestamp in the header, same rows – the file’s bytes change but
+its content does not. datom records the new file provenance as a version
+and does <strong>not</strong> store the data a second time. <a href="design-version-shas.html">Version SHAs</a> explains the three
+hashes that make that distinction.</p>
+</div>
+<div id="step-4-a-batch-of-files" class="section level2">
+<h2>Step 4: A batch of files</h2>
+<p>It is now month 3. The data management team has switched from
+emailing single files to dropping a folder of monthly extracts. Today’s
+drop contains four domains:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a>cutoff <span class="ot">&lt;-</span> <span class="st">&quot;2026-03-28&quot;</span></span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a></span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a><span class="fu">write.csv</span>(<span class="fu">datom_example_data</span>(<span class="st">&quot;dm&quot;</span>, <span class="at">cutoff_date =</span> cutoff),</span>
+<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a>          <span class="fu">path</span>(input_dir, <span class="st">&quot;dm.csv&quot;</span>), <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb15-5"><a href="#cb15-5" tabindex="-1"></a><span class="fu">write.csv</span>(<span class="fu">datom_example_data</span>(<span class="st">&quot;ex&quot;</span>, <span class="at">cutoff_date =</span> cutoff),</span>
+<span id="cb15-6"><a href="#cb15-6" tabindex="-1"></a>          <span class="fu">path</span>(input_dir, <span class="st">&quot;ex.csv&quot;</span>), <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb15-7"><a href="#cb15-7" tabindex="-1"></a><span class="fu">write.csv</span>(<span class="fu">datom_example_data</span>(<span class="st">&quot;lb&quot;</span>, <span class="at">cutoff_date =</span> cutoff),</span>
+<span id="cb15-8"><a href="#cb15-8" tabindex="-1"></a>          <span class="fu">path</span>(input_dir, <span class="st">&quot;lb.csv&quot;</span>), <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb15-9"><a href="#cb15-9" tabindex="-1"></a><span class="fu">write.csv</span>(<span class="fu">datom_example_data</span>(<span class="st">&quot;ae&quot;</span>, <span class="at">cutoff_date =</span> cutoff),</span>
+<span id="cb15-10"><a href="#cb15-10" tabindex="-1"></a>          <span class="fu">path</span>(input_dir, <span class="st">&quot;ae.csv&quot;</span>), <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span></code></pre></div>
+<p>Scan and sync in one pass:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(conn)</span>
+<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a><span class="co">#&gt; i Scanned 4 files: 3 new, 1 changed, 0 unchanged.</span></span>
+<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a>manifest</span>
+<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a><span class="co">#&gt;   name  file         format original_file_sha status</span></span>
+<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a><span class="co">#&gt; 1   dm  .../dm.csv   csv    c41a...           changed</span></span>
+<span id="cb16-6"><a href="#cb16-6" tabindex="-1"></a><span class="co">#&gt; 2   ex  .../ex.csv   csv    9b08...           new</span></span>
+<span id="cb16-7"><a href="#cb16-7" tabindex="-1"></a><span class="co">#&gt; 3   lb  .../lb.csv   csv    72d3...           new</span></span>
+<span id="cb16-8"><a href="#cb16-8" tabindex="-1"></a><span class="co">#&gt; 4   ae  .../ae.csv   csv    1e4a...           new</span></span>
+<span id="cb16-9"><a href="#cb16-9" tabindex="-1"></a></span>
+<span id="cb16-10"><a href="#cb16-10" tabindex="-1"></a><span class="fu">datom_sync</span>(conn, manifest)</span>
+<span id="cb16-11"><a href="#cb16-11" tabindex="-1"></a><span class="co">#&gt; i Syncing 4 tables...</span></span>
+<span id="cb16-12"><a href="#cb16-12" tabindex="-1"></a><span class="co">#&gt; v dm synced (changed).</span></span>
+<span id="cb16-13"><a href="#cb16-13" tabindex="-1"></a><span class="co">#&gt; v ex synced (new).</span></span>
+<span id="cb16-14"><a href="#cb16-14" tabindex="-1"></a><span class="co">#&gt; v lb synced (new).</span></span>
+<span id="cb16-15"><a href="#cb16-15" tabindex="-1"></a><span class="co">#&gt; v ae synced (new).</span></span>
+<span id="cb16-16"><a href="#cb16-16" tabindex="-1"></a><span class="co">#&gt; i Sync complete: 4 succeeded, 0 failed, 0 skipped.</span></span></code></pre></div>
+<p><code>dm</code> is <code>changed</code> (month-3 update);
+<code>ex</code>, <code>lb</code>, <code>ae</code> are brand new. All
+four are now versioned:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a><span class="fu">datom_list</span>(conn)</span>
+<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a><span class="co">#&gt;   name current_version current_data_sha last_updated</span></span>
+<span id="cb17-3"><a href="#cb17-3" tabindex="-1"></a><span class="co">#&gt; 1   ae        3a17b8e2         e91d04ff 2026-03-28T...</span></span>
+<span id="cb17-4"><a href="#cb17-4" tabindex="-1"></a><span class="co">#&gt; 2   dm        d0922fc7         c2e80a14 2026-03-28T...</span></span>
+<span id="cb17-5"><a href="#cb17-5" tabindex="-1"></a><span class="co">#&gt; 3   ex        f44910b5         88a73e02 2026-03-28T...</span></span>
+<span id="cb17-6"><a href="#cb17-6" tabindex="-1"></a><span class="co">#&gt; 4   lb        718e02ca         4c3812dd 2026-03-28T...</span></span></code></pre></div>
+</div>
+<div id="project-health-checks" class="section level2">
+<h2>Project health checks</h2>
+<p><code>datom_status()</code> summarizes the project state at a
+glance:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a><span class="fu">datom_status</span>(conn)</span>
+<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a><span class="co">#&gt; -- datom status: STUDY_001</span></span>
+<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a><span class="co">#&gt; v Git: clean, in sync with origin</span></span>
+<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a><span class="co">#&gt; i Tables on local: 4</span></span>
+<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a><span class="co">#&gt; i Last commit: &lt;sha&gt; &quot;Update ae&quot;</span></span></code></pre></div>
+<p><code>datom_validate()</code> cross-checks that every table in the
+manifest has its parquet file in the data store and its metadata in git
+history:</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a><span class="fu">datom_validate</span>(conn)</span>
+<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a><span class="co">#&gt; v 4 tables validated.</span></span>
+<span id="cb19-3"><a href="#cb19-3" tabindex="-1"></a><span class="co">#&gt; v Manifest &lt;-&gt; data store: consistent.</span></span>
+<span id="cb19-4"><a href="#cb19-4" tabindex="-1"></a><span class="co">#&gt; v Manifest &lt;-&gt; git history: consistent.</span></span></code></pre></div>
+<p>If you ever see a discrepancy from <code>datom_validate()</code>,
+that is the moment to stop and investigate before doing more work – it
+means the project’s state has drifted from one of git or storage.</p>
+</div>
+<div id="reading-as-a-reader" class="section level2">
+<h2>Reading as a reader</h2>
+<p>Writing is a developer action. Reading is what analysts and
+downstream pipelines do, and they use the <strong>reader role</strong> –
+a connection built from the data store alone, with no GitHub PAT and no
+local clone. You build a reader store by leaving <code>github_pat</code>
+unset, then connect by project name:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a>reader_store <span class="ot">&lt;-</span> <span class="fu">datom_store</span>(</span>
+<span id="cb20-2"><a href="#cb20-2" tabindex="-1"></a>  <span class="at">governance =</span> <span class="cn">NULL</span>,</span>
+<span id="cb20-3"><a href="#cb20-3" tabindex="-1"></a>  <span class="at">data       =</span> <span class="fu">datom_store_local</span>(<span class="at">path =</span> data_dir)   <span class="co"># same data location</span></span>
+<span id="cb20-4"><a href="#cb20-4" tabindex="-1"></a>)                                                    <span class="co"># no PAT -&gt; reader role</span></span>
+<span id="cb20-5"><a href="#cb20-5" tabindex="-1"></a></span>
+<span id="cb20-6"><a href="#cb20-6" tabindex="-1"></a>reader_conn <span class="ot">&lt;-</span> <span class="fu">datom_get_conn</span>(<span class="at">store =</span> reader_store, <span class="at">project_name =</span> project_name)</span>
+<span id="cb20-7"><a href="#cb20-7" tabindex="-1"></a><span class="fu">print</span>(reader_conn)</span>
+<span id="cb20-8"><a href="#cb20-8" tabindex="-1"></a><span class="co">#&gt; -- datom connection</span></span>
+<span id="cb20-9"><a href="#cb20-9" tabindex="-1"></a><span class="co">#&gt; * Project: &quot;STUDY_001&quot;</span></span>
+<span id="cb20-10"><a href="#cb20-10" tabindex="-1"></a><span class="co">#&gt; * Role: &quot;reader&quot;</span></span>
+<span id="cb20-11"><a href="#cb20-11" tabindex="-1"></a><span class="co">#&gt; * Backend: &quot;local&quot;</span></span></code></pre></div>
+<p>Read any table through the reader connection:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a><span class="fu">datom_read</span>(reader_conn, <span class="st">&quot;lb&quot;</span>)   <span class="co"># labs, current version from storage</span></span></code></pre></div>
+<p>datom stores data in <a href="https://parquet.apache.org/">Apache
+Parquet</a> format and reads it back as a <code>tibble</code>. The read
+does <strong>not</strong> go through GitHub – the reader resolves the
+parquet file directly from the data store. A teammate on another machine
+takes the same path: they need access to the data store, not to the git
+repo.</p>
+</div>
+<div id="writing-a-computed-table-with-datom_write" class="section level2">
+<h2>Writing a computed table with <code>datom_write()</code></h2>
+<p><code>datom_sync()</code> is the primary workflow for onboarding
+files from a staging folder. For tables derived in code – where the data
+frame is computed rather than imported from a file – use
+<code>datom_write()</code> directly:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a><span class="co"># Derive a summary table in code</span></span>
+<span id="cb22-2"><a href="#cb22-2" tabindex="-1"></a>lb <span class="ot">&lt;-</span> <span class="fu">datom_read</span>(conn, <span class="st">&quot;lb&quot;</span>)</span>
+<span id="cb22-3"><a href="#cb22-3" tabindex="-1"></a>lb_summary <span class="ot">&lt;-</span> dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb22-4"><a href="#cb22-4" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">group_by</span>(lb, LBTESTCD),</span>
+<span id="cb22-5"><a href="#cb22-5" tabindex="-1"></a>  <span class="at">n =</span> dplyr<span class="sc">::</span><span class="fu">n</span>(),</span>
+<span id="cb22-6"><a href="#cb22-6" tabindex="-1"></a>  <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb22-7"><a href="#cb22-7" tabindex="-1"></a>)</span>
+<span id="cb22-8"><a href="#cb22-8" tabindex="-1"></a></span>
+<span id="cb22-9"><a href="#cb22-9" tabindex="-1"></a><span class="co"># Write it as a versioned table, declaring its parent for lineage.</span></span>
+<span id="cb22-10"><a href="#cb22-10" tabindex="-1"></a><span class="co"># datom_parent() resolves the parent&#39;s data_sha and source_lineage from</span></span>
+<span id="cb22-11"><a href="#cb22-11" tabindex="-1"></a><span class="co"># the stored metadata snapshot -- always use it instead of a raw list.</span></span>
+<span id="cb22-12"><a href="#cb22-12" tabindex="-1"></a><span class="fu">datom_write</span>(</span>
+<span id="cb22-13"><a href="#cb22-13" tabindex="-1"></a>  conn,</span>
+<span id="cb22-14"><a href="#cb22-14" tabindex="-1"></a>  <span class="at">data    =</span> lb_summary,</span>
+<span id="cb22-15"><a href="#cb22-15" tabindex="-1"></a>  <span class="at">name    =</span> <span class="st">&quot;lb_summary&quot;</span>,</span>
+<span id="cb22-16"><a href="#cb22-16" tabindex="-1"></a>  <span class="at">message =</span> <span class="st">&quot;Lab test counts from month-3 LB&quot;</span>,</span>
+<span id="cb22-17"><a href="#cb22-17" tabindex="-1"></a>  <span class="at">parents =</span> <span class="fu">list</span>(</span>
+<span id="cb22-18"><a href="#cb22-18" tabindex="-1"></a>    <span class="fu">datom_parent</span>(conn, <span class="at">table =</span> <span class="st">&quot;lb&quot;</span>, <span class="at">version =</span> <span class="fu">datom_history</span>(conn, <span class="st">&quot;lb&quot;</span>)<span class="sc">$</span>version[<span class="dv">1</span>])</span>
+<span id="cb22-19"><a href="#cb22-19" tabindex="-1"></a>  )</span>
+<span id="cb22-20"><a href="#cb22-20" tabindex="-1"></a>)</span>
+<span id="cb22-21"><a href="#cb22-21" tabindex="-1"></a><span class="co">#&gt; v Wrote &quot;lb_summary&quot; (full): &quot;b9c4e21a&quot;</span></span></code></pre></div>
+<p><code>datom_write()</code> takes the same connection and produces the
+same versioned, content-addressed result. The <code>parents</code>
+argument declares lineage – this table was derived from <code>lb</code>
+– making the provenance chain auditable (see <a href="source-lineage.html">Tracing Data Lineage</a>).</p>
+</div>
+<div id="the-datom-table-contract" class="section level2">
+<h2>The datom table contract</h2>
+<p>A table version is identified by a canonical hash of its
+<strong>values</strong> (<code>data_sha</code>), which means every
+column has to be a type datom knows how to encode: <code>logical</code>,
+<code>integer</code>, <code>double</code>, <code>character</code>,
+<code>factor</code>, <code>Date</code>, <code>POSIXct</code>,
+<code>difftime</code>/<code>hms</code>,
+<code>data.table::ITime</code>/<code>IDate</code>,
+<code>bit64::integer64</code>, or a labelled vector over one of
+those.</p>
+<p>Files onboarded through <code>datom_sync()</code> land inside that
+set by construction. It is derived tables – the
+<code>datom_write()</code> path above – where a column can fall outside
+it: a <code>tidyr::nest()</code> result carries a list column,
+<code>strptime()</code> returns <code>POSIXlt</code>, an <code>sf</code>
+table carries geometry, a database round-trip can bring back a blob.</p>
+<p><code>datom_check_hashable()</code> tells you before you write. It
+needs no connection and no store, so it is safe to run anywhere:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" tabindex="-1"></a><span class="fu">library</span>(datom)</span>
+<span id="cb23-2"><a href="#cb23-2" tabindex="-1"></a></span>
+<span id="cb23-3"><a href="#cb23-3" tabindex="-1"></a>lb_summary <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">LBTESTCD =</span> <span class="fu">c</span>(<span class="st">&quot;ALT&quot;</span>, <span class="st">&quot;AST&quot;</span>), <span class="at">n =</span> <span class="fu">c</span>(<span class="dv">12</span><span class="dt">L</span>, <span class="dv">12</span><span class="dt">L</span>))</span>
+<span id="cb23-4"><a href="#cb23-4" tabindex="-1"></a><span class="fu">datom_check_hashable</span>(lb_summary)</span>
+<span id="cb23-5"><a href="#cb23-5" tabindex="-1"></a><span class="co">#&gt; ✔ All 2 columns are hashable. This table is ready for `datom_write()`.</span></span></code></pre></div>
+<p>When a column is outside the contract, the report names it and says
+what to do about it:</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" tabindex="-1"></a>messy <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">id =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">2</span>)</span>
+<span id="cb24-2"><a href="#cb24-2" tabindex="-1"></a>messy<span class="sc">$</span>measurements <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">2</span>), <span class="fu">c</span>(<span class="dv">3</span>, <span class="dv">4</span>))</span>
+<span id="cb24-3"><a href="#cb24-3" tabindex="-1"></a></span>
+<span id="cb24-4"><a href="#cb24-4" tabindex="-1"></a>report <span class="ot">&lt;-</span> <span class="fu">datom_check_hashable</span>(messy)</span>
+<span id="cb24-5"><a href="#cb24-5" tabindex="-1"></a><span class="co">#&gt; ✖ 1 of 2 columns are not hashable.</span></span>
+<span id="cb24-6"><a href="#cb24-6" tabindex="-1"></a><span class="co">#&gt; ✖ Column measurements (&lt;list&gt;): List and blob columns are not hashable. Flatten</span></span>
+<span id="cb24-7"><a href="#cb24-7" tabindex="-1"></a><span class="co">#&gt;   to one value per row with tidyr::unnest(), or serialize each element to</span></span>
+<span id="cb24-8"><a href="#cb24-8" tabindex="-1"></a><span class="co">#&gt;   character (for example with jsonlite::toJSON() per element), before writing.</span></span>
+<span id="cb24-9"><a href="#cb24-9" tabindex="-1"></a><span class="co">#&gt; ℹ Fix these before `datom_write()`, which refuses the whole table until they are resolved.</span></span>
+<span id="cb24-10"><a href="#cb24-10" tabindex="-1"></a>report<span class="sc">$</span>recourse[report<span class="sc">$</span>status <span class="sc">==</span> <span class="st">&quot;unsupported&quot;</span>]</span>
+<span id="cb24-11"><a href="#cb24-11" tabindex="-1"></a><span class="co">#&gt; [1] &quot;List and blob columns are not hashable. Flatten to one value per row with tidyr::unnest(), or serialize each element to character (for example with jsonlite::toJSON() per element), before writing.&quot;</span></span></code></pre></div>
+<p><code>datom_write()</code> runs the same check itself and refuses the
+whole table until every column is inside the contract, reporting all
+offenders at once and leaving no partial state behind. The full
+type-by-type recourse table and the reasoning live in <a href="design-version-shas.html">Version SHAs</a>.</p>
+</div>
+<div id="where-you-are" class="section level2">
+<h2>Where you are</h2>
+<ul>
+<li>A full sync-based onboarding workflow: one file, update, no-op,
+batch.</li>
+<li>Four raw tables versioned; one derived table written directly.</li>
+<li>Input files are disposable; storage is the permanent record.</li>
+<li><code>datom_status()</code> and <code>datom_validate()</code>
+provide consistency checks.</li>
+<li>Readers access data from storage alone – no git, no PAT.</li>
+<li><code>datom_check_hashable()</code> is the pre-flight check for the
+table contract.</li>
+</ul>
+<p>From here, <a href="start-on-s3.html">Starting on S3</a> shows the
+same workflow with data in object storage, <a href="source-lineage.html">Tracing Data Lineage</a> shows how derived
+tables record where they came from, and <a href="design-version-shas.html">Version SHAs</a> explains the three
+hashes behind <code>version</code>, <code>data_sha</code>, and
+stored-object integrity.</p>
+</div>
+<div id="teardown" class="section level2">
+<h2>Teardown</h2>
+<p>When done, remove the project. Pick the one option that fits, and
+copy only that chunk:</p>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" tabindex="-1"></a><span class="co"># Option A -- full scripted teardown (deletes local files AND the GitHub repo).</span></span>
+<span id="cb25-2"><a href="#cb25-2" tabindex="-1"></a><span class="co"># Do this BEFORE any manual unlink().</span></span>
+<span id="cb25-3"><a href="#cb25-3" tabindex="-1"></a><span class="fu">datom_repo_delete</span>(conn, <span class="at">confirm =</span> <span class="st">&quot;STUDY_001&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" tabindex="-1"></a><span class="co"># Option B -- local only (the GitHub repo stays; delete it from the UI later).</span></span>
+<span id="cb26-2"><a href="#cb26-2" tabindex="-1"></a><span class="fu">unlink</span>(<span class="fu">c</span>(dev_dir, data_dir), <span class="at">recursive =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
+<p>Do not call <code>unlink()</code> before
+<code>datom_repo_delete()</code> – removing the local clone first strips
+the GitHub remote reference and the remote repo will not be deleted.</p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,763 @@
+#' Pull Latest Changes from Remote
+#'
+#' Fetches and merges the latest git changes from the remote repository.
+#' This is the recommended entry point at the start of each work session
+#' to ensure the local state is current before syncing or writing tables.
+#'
+#' Git is the source of truth for all metadata (manifest, dispatch, table
+#' metadata). The manifest and other metadata files live in git and are
+#' pulled along with any other committed changes.
+#'
+#' Requires developer role (readers have no git access).
+#'
+#' @param conn A `datom_conn` object from [datom_get_conn()].
+#'
+#' @return Invisibly, a list with:
+#'   \describe{
+#'     \item{`commits_pulled`}{Integer count of new commits merged.}
+#'     \item{`branch`}{Current branch name.}
+#'   }
+#'
+#' @examples
+#' # Offline, self-contained: a bare git repo stands in for GitHub and a
+#' # local directory for object storage.
+#' if (requireNamespace("git2r", quietly = TRUE)) {
+#'   tmp <- tempfile("datom-example-")
+#'   remote <- file.path(tmp, "remote.git")
+#'   dir.create(remote, recursive = TRUE)
+#'   git2r::init(remote, bare = TRUE)
+#'
+#'   store <- datom_store(
+#'     data = datom_store_local(file.path(tmp, "storage")),
+#'     github_pat = "example-token", # role selector; a local remote needs none
+#'     data_repo_url = remote,
+#'     validate = FALSE
+#'   )
+#'   datom_init_repo(file.path(tmp, "repo"), "example_project", store)
+#'   conn <- datom_get_conn(file.path(tmp, "repo"), store)
+#'
+#'   # Nothing new on the remote yet, so this is a no-op.
+#'   datom_pull(conn)
+#'
+#'   unlink(tmp, recursive = TRUE)
+#' }
+#' @export
+datom_pull <- function(conn) {
+
+  if (!inherits(conn, "datom_conn")) {
+    cli::cli_abort("{.arg conn} must be a {.cls datom_conn} object from {.fn datom_get_conn}.")
+  }
+
+  if (conn$role != "developer") {
+    cli::cli_abort(c(
+      "Pull requires {.val developer} role.",
+      "i" = "Current role: {.val {conn$role}}."
+    ))
+  }
+
+  if (is.null(conn$path)) {
+    cli::cli_abort(c(
+      "Pull requires a local git repo path.",
+      "i" = "Use {.fn datom_get_conn} with a datom-initialized repo."
+    ))
+  }
+
+  repo_path <- conn$path
+
+  # Record HEAD SHA before pulling
+  repo <- git2r::repository(repo_path)
+  head_before <- as.character(git2r::revparse_single(repo, "HEAD")$sha)
+  branch_name <- .datom_git_branch(repo_path)
+
+  # Git pull (fetch + merge)
+  .datom_git_pull(repo_path, pat = conn$github_pat)
+
+  # Count commits pulled by comparing HEAD before/after
+  head_after <- as.character(git2r::revparse_single(repo, "HEAD")$sha)
+  commits_pulled <- 0L
+  if (!identical(head_before, head_after)) {
+    commits_pulled <- tryCatch({
+      ab <- git2r::ahead_behind(
+        git2r::revparse_single(repo, head_before),
+        git2r::revparse_single(repo, "HEAD")
+      )
+      as.integer(ab[[2]])  # how far old HEAD is behind new HEAD
+    }, error = function(e) NA_integer_)
+  }
+
+  if (is.na(commits_pulled) || commits_pulled > 0L) {
+    n_msg <- if (is.na(commits_pulled)) "new" else commits_pulled
+    cli::cli_alert_success("Pulled {n_msg} commit{?s} on {.val {branch_name}} (data repo).")
+  } else {
+    cli::cli_alert_info("Already up to date on {.val {branch_name}} (data repo).")
+  }
+
+  invisible(list(
+    commits_pulled = commits_pulled,
+    branch = branch_name
+  ))
+}
+
+
+#' Sync Data-Side Metadata to Storage
+#'
+#' Mirrors the data repo's metadata to the data store so readers see current
+#' state: the manifest (`.metadata/manifest.json`) and each table's metadata
+#' (`{name}/.metadata/metadata.json`, `version_history.json`).
+#'
+#' Data-only: governance files (dispatch.json, ref.json, migration_history.json)
+#' are not touched here. Governance sync is owned by the governance layer
+#' (`gov_sync_dispatch()`).
+#'
+#' Used after a failed upload, or by `datom_validate(fix = TRUE)`, to bring
+#' storage metadata back in line with the local data clone. Requires a
+#' developer connection with a local repo path.
+#'
+#' @param conn A `datom_conn` object from [datom_get_conn()].
+#' @param .confirm If `TRUE` (default), requires interactive confirmation
+#'   before proceeding. Set to `FALSE` for non-interactive use.
+#'
+#' @return Invisibly, a list with `repo_files` (character vector of synced
+#'   keys) and `tables` (list of per-table sync results).
+#' @keywords internal
+.datom_sync_data_metadata <- function(conn, .confirm = TRUE) {
+
+  if (!inherits(conn, "datom_conn")) {
+    cli::cli_abort("{.arg conn} must be a {.cls datom_conn} object from {.fn datom_get_conn}.")
+  }
+
+  if (conn$role != "developer") {
+    cli::cli_abort(c(
+      "Metadata sync requires {.val developer} role.",
+      "i" = "Current role: {.val {conn$role}}."
+    ))
+  }
+
+  if (is.null(conn$path)) {
+    cli::cli_abort(c(
+      "Metadata sync requires a local git repo path.",
+      "i" = "Use {.fn datom_get_conn} with a datom-initialized repo."
+    ))
+  }
+
+  # Discover tables from git repo (directories with metadata.json)
+  repo_path <- conn$path
+  table_dirs <- fs::dir_ls(repo_path, type = "directory")
+  table_dirs <- table_dirs[!grepl("^\\.", fs::path_file(table_dirs))]
+  table_dirs <- table_dirs[!fs::path_file(table_dirs) %in%
+    c("input_files", "renv", "man", "R", "tests", "vignettes", "src")]
+
+  table_names <- fs::path_file(table_dirs)
+  table_names <- table_names[purrr::map_lgl(table_dirs, function(d) {
+    fs::file_exists(fs::path(d, "metadata.json"))
+  })]
+
+  # Interactive confirmation
+  if (isTRUE(.confirm)) {
+    if (!interactive()) {
+      cli::cli_abort(c(
+        "Interactive confirmation required.",
+        "i" = "Use {.code .confirm = FALSE} for non-interactive use."
+      ))
+    }
+
+    cli::cli_alert_warning(
+      "This will update the manifest and per-table metadata for {length(table_names)} table{?s} in data storage."
+    )
+
+    answer <- readline("Proceed? [y/N] ")
+    if (!tolower(answer) %in% c("y", "yes")) {
+      cli::cli_alert_info("Sync cancelled.")
+      return(invisible(list(repo_files = character(), tables = list())))
+    }
+  }
+
+  # --- Sync manifest to data storage -----------------------------------------
+  repo_files_synced <- character()
+  manifest_local <- fs::path(repo_path, ".datom", "manifest.json")
+  if (fs::file_exists(manifest_local)) {
+    data <- jsonlite::read_json(manifest_local)
+    .datom_storage_write_json(conn, ".metadata/manifest.json", data)
+    repo_files_synced <- c(repo_files_synced, ".metadata/manifest.json")
+  }
+
+  cli::cli_alert_success(
+    "Synced {length(repo_files_synced)} repo-level file{?s}."
+  )
+
+  # --- Sync per-table metadata -----------------------------------------------
+  table_results <- purrr::map(table_names, function(tbl) {
+    tryCatch({
+      .datom_sync_table_metadata(conn, tbl)
+    }, error = function(e) {
+      cli::cli_alert_danger("Failed to sync {.val {tbl}}: {conditionMessage(e)}")
+      list(name = tbl, action = "error", error = conditionMessage(e))
+    })
+  })
+  names(table_results) <- table_names
+
+  n_ok <- sum(purrr::map_chr(table_results, ~ .x$action %||% "error") != "error")
+  n_err <- length(table_results) - n_ok
+
+  cli::cli_alert_info(
+    "Metadata sync complete: {n_ok} table{?s} synced, {n_err} error{?s}."
+  )
+
+  invisible(list(
+    repo_files = repo_files_synced,
+    tables = table_results
+  ))
+}
+
+
+#' Sync a single table's metadata files to S3
+#' @noRd
+.datom_sync_table_metadata <- function(conn, name) {
+  repo_path <- conn$path
+  table_dir <- fs::path(repo_path, name)
+
+  s3_keys <- character()
+
+  # metadata.json
+  metadata_path <- fs::path(table_dir, "metadata.json")
+  if (fs::file_exists(metadata_path)) {
+    data <- jsonlite::read_json(metadata_path)
+    s3_key <- paste0(name, "/.metadata/metadata.json")
+    .datom_storage_write_json(conn, s3_key, data)
+    s3_keys <- c(s3_keys, s3_key)
+  }
+
+  # version_history.json
+  history_path <- fs::path(table_dir, "version_history.json")
+  if (fs::file_exists(history_path)) {
+    data <- jsonlite::read_json(history_path)
+    s3_key <- paste0(name, "/.metadata/version_history.json")
+    .datom_storage_write_json(conn, s3_key, data)
+    s3_keys <- c(s3_keys, s3_key)
+  }
+
+  # Versioned metadata snapshots ({metadata_sha}.json)
+  meta_dir <- fs::path(table_dir, ".metadata")
+  if (fs::dir_exists(meta_dir)) {
+    snapshot_files <- fs::dir_ls(meta_dir, glob = "*.json")
+    for (snap in snapshot_files) {
+      snap_name <- fs::path_file(snap)
+      data <- jsonlite::read_json(snap)
+      s3_key <- paste0(name, "/.metadata/", snap_name)
+      .datom_storage_write_json(conn, s3_key, data)
+      s3_keys <- c(s3_keys, s3_key)
+    }
+  }
+
+  list(name = name, action = "synced", s3_keys = s3_keys)
+}
+
+
+#' Scan and Prepare Manifest for Sync
+#'
+#' Scans a flat `input_files/` directory and computes file SHAs. Compares
+#' against the current `.datom/manifest.json` to detect new or changed files.
+#' Returns a manifest data frame for review before calling [datom_sync()].
+#'
+#' @param conn A `datom_conn` object from [datom_get_conn()].
+#' @param path Optional path to input files directory. Defaults to
+#'   `input_files/` inside the repo.
+#' @param pattern Glob pattern for file matching. Default `"*"`.
+#'
+#' Files whose format is outside datom's ingestion allowlist (flat tabular
+#' formats only) are flagged `"unsupported_format"` up front, without blocking
+#' their allowlisted siblings.
+#'
+#' @return Data frame with columns: name, file, format, original_file_sha,
+#'   status (one of `"new"`, `"changed"`, `"unchanged"`,
+#'   `"unsupported_format"`).
+#' @export
+#'
+#' @examples
+#' # Offline, self-contained: a bare git repo stands in for GitHub and a
+#' # local directory for object storage.
+#' if (requireNamespace("git2r", quietly = TRUE)) {
+#'   tmp <- tempfile("datom-example-")
+#'   remote <- file.path(tmp, "remote.git")
+#'   dir.create(remote, recursive = TRUE)
+#'   git2r::init(remote, bare = TRUE)
+#'
+#'   store <- datom_store(
+#'     data = datom_store_local(file.path(tmp, "storage")),
+#'     github_pat = "example-token", # role selector; a local remote needs none
+#'     data_repo_url = remote,
+#'     validate = FALSE
+#'   )
+#'   datom_init_repo(file.path(tmp, "repo"), "example_project", store)
+#'   conn <- datom_get_conn(file.path(tmp, "repo"), store)
+#'
+#'   # Drop a source file into the repo's input_files/ directory.
+#'   file.copy(
+#'     system.file("extdata", "dm.csv", package = "datom"),
+#'     file.path(tmp, "repo", "input_files", "dm.csv")
+#'   )
+#'
+#'   manifest <- datom_sync_manifest(conn)
+#'   print(manifest[, c("name", "format", "status")])
+#'
+#'   unlink(tmp, recursive = TRUE)
+#' }
+datom_sync_manifest <- function(conn,
+                               path = NULL,
+                               pattern = "*") {
+
+  if (!inherits(conn, "datom_conn")) {
+    cli::cli_abort("{.arg conn} must be a {.cls datom_conn} object from {.fn datom_get_conn}.")
+  }
+
+  if (conn$role != "developer") {
+    cli::cli_abort(c(
+      "Sync operations require {.val developer} role.",
+      "i" = "Current role: {.val {conn$role}}."
+    ))
+  }
+
+  if (is.null(conn$path)) {
+    cli::cli_abort(c(
+      "Sync operations require a local git repo path.",
+      "i" = "Use {.fn datom_get_conn} with a datom-initialized repo."
+    ))
+  }
+
+  # Resolve input directory
+  input_dir <- if (is.null(path)) {
+    fs::path(conn$path, "input_files")
+  } else {
+    fs::path_abs(path)
+  }
+
+  if (!fs::dir_exists(input_dir)) {
+    cli::cli_abort(c(
+      "Input directory not found: {.path {input_dir}}",
+      "i" = "Create it and place source files inside."
+    ))
+  }
+
+  # Validate flat directory (no subdirectories)
+  subdirs <- fs::dir_ls(input_dir, type = "directory")
+  if (length(subdirs) > 0L) {
+    cli::cli_abort(c(
+      "Input directory must be flat (no subdirectories).",
+      "x" = "Found {length(subdirs)} subdirector{?y/ies}: {.path {fs::path_file(subdirs)}}"
+    ))
+  }
+
+  # List files matching pattern
+  all_files <- fs::dir_ls(input_dir, type = "file")
+  if (pattern != "*") {
+    rx <- utils::glob2rx(pattern)
+    all_files <- all_files[grepl(rx, fs::path_file(all_files))]
+  }
+
+  if (length(all_files) == 0L) {
+    cli::cli_alert_info("No files found in {.path {input_dir}} matching {.val {pattern}}.")
+    return(data.frame(
+      name = character(),
+      file = character(),
+      format = character(),
+      original_file_sha = character(),
+      status = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  # Read current manifest (local git copy)
+  manifest_path <- fs::path(conn$path, ".datom", "manifest.json")
+  current_manifest <- if (fs::file_exists(manifest_path)) {
+    jsonlite::read_json(manifest_path)
+  } else {
+    list(tables = list())
+  }
+
+  # Build manifest rows
+  rows <- purrr::map(all_files, function(fp) {
+    file_name <- fs::path_file(fp)
+    table_name <- fs::path_ext_remove(file_name)
+    file_format <- fs::path_ext(fp)
+    original_file_sha <- .datom_compute_original_file_sha(fp)
+
+    # Compare against current manifest. A non-allowlisted format is flagged up
+    # front and never reaches the new/changed comparison -- it is not
+    # actionable regardless of whether its bytes moved.
+    existing <- current_manifest$tables[[table_name]]
+    status <- if (!tolower(file_format) %in% .datom_import_formats) {
+      "unsupported_format"
+    } else if (is.null(existing)) {
+      "new"
+    } else if (!identical(existing$original_file_sha, original_file_sha)) {
+      "changed"
+    } else {
+      "unchanged"
+    }
+
+    data.frame(
+      name = table_name,
+      file = as.character(fp),
+      format = file_format,
+      original_file_sha = original_file_sha,
+      status = status,
+      stringsAsFactors = FALSE
+    )
+  })
+
+  result <- do.call(rbind, rows)
+  rownames(result) <- NULL
+
+  n_new <- sum(result$status == "new")
+  n_changed <- sum(result$status == "changed")
+  n_unchanged <- sum(result$status == "unchanged")
+  n_unsupported <- sum(result$status == "unsupported_format")
+
+  cli::cli_alert_info(
+    "Scanned {nrow(result)} file{?s}: {n_new} new, {n_changed} changed, {n_unchanged} unchanged."
+  )
+
+  if (n_unsupported > 0L) {
+    unsupported_names <- result$name[result$status == "unsupported_format"]
+    cli::cli_alert_warning(
+      "{n_unsupported} file{?s} in an unsupported format: {.val {unsupported_names}}."
+    )
+  }
+
+  result
+}
+
+
+#' Sync Files to datom Repository
+#'
+#' Processes new/changed files from a manifest produced by
+#' [datom_sync_manifest()]. Imports each file via `rio::import()`, converts to
+#' a data frame, and calls [datom_write()] to store as parquet in S3 with git
+#' metadata. Updates the local `.datom/manifest.json` after each successful
+#' write.
+#'
+#' @param conn A `datom_conn` object from [datom_get_conn()].
+#' @param manifest Data frame from [datom_sync_manifest()], with columns
+#'   `name`, `file`, `format`, `original_file_sha`, `status`.
+#' @param continue_on_error If `TRUE` (default), continues processing
+#'   remaining tables when one fails. If `FALSE`, stops on first error.
+#'
+#' Rows flagged `"unsupported_format"` by [datom_sync_manifest()] are reported
+#' as `result = "error"` with the recourse in the `error` column; the rest of
+#' the batch still processes.
+#'
+#' @return The manifest data frame augmented with `result` and `error` columns.
+#'   `result` is `"success"`, `"skipped"`, or `"error"`.
+#' @export
+#'
+#' @examples
+#' # Offline, self-contained: a bare git repo stands in for GitHub and a
+#' # local directory for object storage. File import needs the optional
+#' # rio package.
+#' if (requireNamespace("git2r", quietly = TRUE) &&
+#'     requireNamespace("rio", quietly = TRUE)) {
+#'   tmp <- tempfile("datom-example-")
+#'   remote <- file.path(tmp, "remote.git")
+#'   dir.create(remote, recursive = TRUE)
+#'   git2r::init(remote, bare = TRUE)
+#'
+#'   store <- datom_store(
+#'     data = datom_store_local(file.path(tmp, "storage")),
+#'     github_pat = "example-token", # role selector; a local remote needs none
+#'     data_repo_url = remote,
+#'     validate = FALSE
+#'   )
+#'   datom_init_repo(file.path(tmp, "repo"), "example_project", store)
+#'   conn <- datom_get_conn(file.path(tmp, "repo"), store)
+#'
+#'   file.copy(
+#'     system.file("extdata", "dm.csv", package = "datom"),
+#'     file.path(tmp, "repo", "input_files", "dm.csv")
+#'   )
+#'
+#'   manifest <- datom_sync_manifest(conn)
+#'   result <- datom_sync(conn, manifest)
+#'   print(result[, c("name", "status", "result")])
+#'
+#'   unlink(tmp, recursive = TRUE)
+#' }
+datom_sync <- function(conn,
+                      manifest,
+                      continue_on_error = TRUE) {
+
+  # --- validation ---
+  if (!inherits(conn, "datom_conn")) {
+    cli::cli_abort("{.arg conn} must be a {.cls datom_conn} object from {.fn datom_get_conn}.")
+  }
+
+  if (conn$role != "developer") {
+    cli::cli_abort(c(
+      "Sync operations require {.val developer} role.",
+      "i" = "Current role: {.val {conn$role}}."
+    ))
+  }
+
+  if (is.null(conn$path)) {
+    cli::cli_abort(c(
+      "Sync operations require a local git repo path.",
+      "i" = "Use {.fn datom_get_conn} with a datom-initialized repo."
+    ))
+  }
+
+  if (!is.data.frame(manifest)) {
+    cli::cli_abort("{.arg manifest} must be a data frame from {.fn datom_sync_manifest}.")
+  }
+
+  required_cols <- c("name", "file", "format", "original_file_sha", "status")
+  missing_cols <- setdiff(required_cols, names(manifest))
+  if (length(missing_cols) > 0L) {
+    cli::cli_abort(c(
+      "Manifest missing required columns: {.val {missing_cols}}.",
+      "i" = "Use {.fn datom_sync_manifest} to generate a valid manifest."
+    ))
+  }
+
+  .datom_check_rio()
+
+  # --- stale-state check ---
+  .datom_check_git_current(conn$path, pat = conn$github_pat)
+
+  # --- filter to actionable rows ---
+  actionable <- manifest$status %in% c("new", "changed")
+  manifest$result <- ifelse(actionable, NA_character_, "skipped")
+  manifest$error <- NA_character_
+
+  # Non-allowlisted formats are reported as errors carrying the same recourse
+  # .datom_import_file() would abort with -- one bad file does not block its
+  # allowlisted siblings.
+  unsupported <- manifest$status == "unsupported_format"
+  if (any(unsupported)) {
+    manifest$result[unsupported] <- "error"
+    manifest$error[unsupported] <- paste(
+      .datom_import_format_recourse(), collapse = " "
+    )
+    n_unsupported <- sum(unsupported)
+    unsupported_names <- manifest$name[unsupported]
+    cli::cli_alert_danger(
+      "{n_unsupported} file{?s} in an unsupported format, not synced: {.val {unsupported_names}}."
+    )
+  }
+
+  n_todo <- sum(actionable)
+  if (n_todo == 0L) {
+    cli::cli_alert_info("No new or changed files. Nothing to sync.")
+    return(manifest)
+  }
+
+  cli::cli_alert_info("Syncing {n_todo} table{?s}...")
+
+  # --- process each actionable table ---
+  todo_idx <- which(actionable)
+
+  for (i in todo_idx) {
+    tbl_name <- manifest$name[i]
+    tbl_file <- manifest$file[i]
+    tbl_format <- manifest$format[i]
+    tbl_original_file_sha <- manifest$original_file_sha[i]
+
+    tryCatch({
+      # Import file -> data frame
+      data <- .datom_import_file(tbl_file, tbl_format)
+
+      # Build self-lineage for imported (raw) tables.
+      # version_sha uses data_sha (content-addressed, independent of metadata_sha)
+      # so there is no circular dependency with the metadata construction.
+      tbl_data_sha <- .datom_compute_data_sha(data)
+      self_lineage <- list(list(
+        project     = conn$project_name,
+        table       = tbl_name,
+        version_sha = tbl_data_sha
+      ))
+
+      # Write via datom_write (handles manifest update internally)
+      write_result <- datom_write(
+        conn,
+        data = data,
+        name = tbl_name,
+        message = paste0("Sync ", tbl_name, " (", manifest$status[i], ")"),
+        .source_lineage = self_lineage,
+        .table_type = "imported",
+        .original_file_sha = tbl_original_file_sha,
+        .original_format = tbl_format
+      )
+
+      manifest$result[i] <- "success"
+
+      cli::cli_alert_success("{.val {tbl_name}} synced ({manifest$status[i]}).")
+
+    }, error = function(e) {
+      manifest$result[i] <<- "error"
+      manifest$error[i] <<- conditionMessage(e)
+
+      if (continue_on_error) {
+        cli::cli_alert_danger("Failed to sync {.val {tbl_name}}: {conditionMessage(e)}")
+      } else {
+        cli::cli_abort(c(
+          "Failed to sync {.val {tbl_name}}.",
+          "x" = conditionMessage(e),
+          "i" = "Set {.code continue_on_error = TRUE} to skip failures."
+        ))
+      }
+    })
+  }
+
+  # --- summary ---
+  n_ok <- sum(manifest$result == "success", na.rm = TRUE)
+  n_err <- sum(manifest$result == "error", na.rm = TRUE)
+  n_skip <- sum(manifest$result == "skipped", na.rm = TRUE)
+
+  cli::cli_alert_info(
+    "Sync complete: {n_ok} succeeded, {n_err} failed, {n_skip} skipped."
+  )
+
+  manifest
+}
+
+
+# --- Internal helpers for datom_sync -------------------------------------------
+
+# Formats datom_sync will onboard. Flat tabular only: the sync path must produce
+# a data frame whose columns are all hashable, so container formats (.rds,
+# .json, .xml) and anything else outside this list are refused. The escape hatch
+# is explicit -- the user reads the file themselves and calls datom_write().
+.datom_import_formats <- c(
+  "csv", "tsv", "txt", "psv", "parquet",
+  "sas7bdat", "xpt", "sav", "zsav", "por", "dta",
+  "xls", "xlsx"
+)
+
+
+#' Canonical recourse for a non-allowlisted ingestion format
+#'
+#' Single source for the two advice lines shared by the `.datom_import_file()`
+#' abort and the `error` column `datom_sync()` reports on an
+#' `unsupported_format` row, so the two can never drift. Returns already-
+#' rendered plain text (no cli markup left in it), which makes it safe to
+#' splice into a cli bullet or into a data frame cell.
+#' @noRd
+.datom_import_format_recourse <- function() {
+  c(
+    cli::format_inline(
+      "datom_sync onboards flat tabular formats only: {.val {(.datom_import_formats)}}."
+    ),
+    cli::format_inline(
+      paste0(
+        "Convert the file to CSV or parquet, or read it yourself and pass the ",
+        "resulting data frame to {.fn datom_write}."
+      )
+    )
+  )
+}
+
+
+#' Check rio availability
+#' @noRd
+.datom_check_rio <- function() {
+  if (!requireNamespace("rio", quietly = TRUE)) {
+    cli::cli_abort(c(
+      "Package {.pkg rio} is required for file import during sync.",
+      "i" = "Install with {.code install.packages(\"rio\")}"
+    ))
+  }
+  invisible(TRUE)
+}
+
+
+#' Import a file to data frame via rio
+#' @noRd
+.datom_import_file <- function(file, format) {
+  fmt <- tolower(format)
+
+  # Allowlist gate: refuse before touching the file at all.
+  if (!fmt %in% .datom_import_formats) {
+    recourse <- .datom_import_format_recourse()
+    cli::cli_abort(c(
+      "Cannot import {.file {file}}: format {.val {format}} is not a supported datom ingestion format.",
+      "i" = recourse[1],
+      "i" = recourse[2]
+    ))
+  }
+
+  # Parquet goes through arrow directly (more reliable than rio for parquet)
+  if (fmt == "parquet") {
+    return(arrow::read_parquet(file))
+  }
+
+  data <- rio::import(file)
+
+  if (!is.data.frame(data)) {
+    cli::cli_abort("Imported file {.path {file}} did not produce a data frame.")
+  }
+
+  data
+}
+
+
+#' Update a single table entry in local .datom/manifest.json
+#' @noRd
+.datom_update_manifest_entry <- function(conn, name, metadata_sha, data_sha,
+                                        original_file_sha = NULL,
+                                        format = NULL) {
+  manifest_path <- fs::path(conn$path, ".datom", "manifest.json")
+  fs::dir_create(fs::path_dir(manifest_path))
+
+  manifest <- if (fs::file_exists(manifest_path)) {
+    jsonlite::read_json(manifest_path)
+  } else {
+    list(project_name = conn$project_name, tables = list(), summary = list())
+  }
+
+  # Read size_bytes from local metadata.json (already written at this point)
+  meta_path <- fs::path(conn$path, name, "metadata.json")
+  # as.numeric (not as.integer): tables > 2 GB overflow the 2^31 integer
+  # limit, yielding NA that then poisons summary$total_size_bytes.
+  size_bytes <- if (fs::file_exists(meta_path)) {
+    m <- jsonlite::read_json(meta_path)
+    as.numeric(m$size_bytes %||% 0)
+  } else {
+    0
+  }
+
+  # Count versions from version_history.json
+  vh_path <- fs::path(conn$path, name, "version_history.json")
+  version_count <- if (fs::file_exists(vh_path)) {
+    vh <- jsonlite::read_json(vh_path)
+    length(vh)
+  } else {
+    1L
+  }
+
+  entry <- list(
+    current_version = metadata_sha,
+    current_data_sha = data_sha,
+    last_updated = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+    size_bytes = size_bytes,
+    version_count = as.integer(version_count)
+  )
+
+  if (!is.null(original_file_sha)) entry$original_file_sha <- original_file_sha
+  if (!is.null(format)) entry$original_format <- format
+
+  manifest$tables[[name]] <- entry
+
+  # Update summary
+  manifest$updated_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+  manifest$summary <- list(
+    total_tables = length(manifest$tables),
+    total_size_bytes = sum(purrr::map_dbl(
+      manifest$tables, ~ as.numeric(.x$size_bytes %||% 0L)
+    )),
+    total_versions = sum(purrr::map_int(
+      manifest$tables, ~ as.integer(.x$version_count %||% 0L)
+    ))
+  )
+
+  jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE, pretty = TRUE)
+
+  invisible(manifest)
+}

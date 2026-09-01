@@ -1,0 +1,738 @@
+# --- .datom_create_ref() -------------------------------------------------------
+
+# Helper: make a composite store with mock S3 clients
+# (defined at top so all tests below can use it)
+make_test_store <- function(gov_bucket = "gov-bucket", gov_prefix = "gov/",
+                             data_bucket = "data-bucket", data_prefix = "data/",
+                             role = "reader") {
+  gov_comp <- datom_store_s3(
+    bucket = gov_bucket, prefix = gov_prefix, region = "us-east-1",
+    access_key = "AK", secret_key = "SK", validate = FALSE
+  )
+  data_comp <- datom_store_s3(
+    bucket = data_bucket, prefix = data_prefix, region = "us-east-1",
+    access_key = "AK", secret_key = "SK", validate = FALSE
+  )
+  pat <- if (role == "developer") "ghp_fake" else NULL
+  datom_store(governance = gov_comp, data = data_comp,
+              github_pat = pat, validate = FALSE)
+}
+
+test_that("creates ref with current data location", {
+  data_store <- datom_store_s3(
+    bucket = "study-bucket", prefix = "trial/", region = "us-east-1",
+    access_key = "AK", secret_key = "SK", validate = FALSE
+  )
+
+  ref <- .datom_create_ref(data_store)
+
+  expect_equal(ref$current$root, "study-bucket")
+  expect_equal(ref$current$prefix, "trial/")
+  expect_equal(ref$current$region, "us-east-1")
+  expect_equal(ref$previous, list())
+})
+
+test_that("creates ref with NULL prefix", {
+  data_store <- datom_store_s3(
+    bucket = "my-bucket", prefix = NULL, region = "eu-west-1",
+    access_key = "AK", secret_key = "SK", validate = FALSE
+  )
+
+  ref <- .datom_create_ref(data_store)
+
+  expect_equal(ref$current$root, "my-bucket")
+  expect_null(ref$current$prefix)
+  expect_equal(ref$current$region, "eu-west-1")
+})
+
+test_that("creates ref with local store component", {
+  data_store <- datom_store_local(
+    path = "/data/store", prefix = "proj/", validate = FALSE
+  )
+
+  ref <- .datom_create_ref(data_store)
+
+  expect_match(ref$current$root, "data/store")
+  expect_equal(ref$current$prefix, "proj/")
+  expect_null(ref$current$region)
+})
+
+
+test_that("NULL prefix survives a JSON round-trip as NULL (not empty list)", {
+  # Regression: a NULL prefix serializes to {} and reads back as an empty
+  # list, which previously triggered a false migration. .datom_create_ref
+  # must drop NULL fields and .datom_parse_ref must normalize empty-ish
+  # values back to NULL.
+  data_store <- datom_store_s3(
+    bucket = "my-bucket", prefix = NULL, region = "us-east-1",
+    access_key = "AK", secret_key = "SK", validate = FALSE
+  )
+
+  ref <- .datom_create_ref(data_store)
+
+  ref_path <- withr::local_tempfile(fileext = ".json")
+  jsonlite::write_json(ref, ref_path, auto_unbox = TRUE, pretty = TRUE)
+  parsed <- .datom_parse_ref(
+    jsonlite::read_json(ref_path, simplifyVector = FALSE),
+    source = ref_path
+  )
+
+  expect_null(parsed$prefix)
+  # The location must compare equal to the originating store (no migration).
+  expect_true(identical(.datom_normalize_prefix(parsed$prefix),
+                        .datom_normalize_prefix(data_store$prefix)))
+})
+
+
+test_that(".datom_normalize_prefix collapses empty-ish forms to NULL", {
+  expect_null(.datom_normalize_prefix(NULL))
+  expect_null(.datom_normalize_prefix(list()))
+  expect_null(.datom_normalize_prefix(""))
+  expect_null(.datom_normalize_prefix(NA_character_))
+  expect_equal(.datom_normalize_prefix("trial/"), "trial/")
+  expect_equal(.datom_normalize_prefix(list("trial/")), "trial/")
+})
+
+
+test_that(".datom_parse_ref round-trips a battery of gov-state ref structures", {
+  # Feature: gov-seam-liftout, Property 3: gov state read round-trip (C8) --
+  # datom retains the governance *read* surface; the ref parser is the gov-state
+  # reader. Every ref.json structure must survive a JSON write/read round-trip
+  # and parse back to its intended data location.
+  battery <- list(
+    full_s3 = list(
+      current  = list(root = "data-bucket", prefix = "trial/",
+                      region = "us-west-2"),
+      expected = list(root = "data-bucket", prefix = "trial/",
+                      region = "us-west-2")
+    ),
+    null_prefix = list(
+      current  = list(root = "my-bucket", region = "eu-west-1"),
+      expected = list(root = "my-bucket", prefix = NULL, region = "eu-west-1")
+    ),
+    empty_prefix = list(
+      current  = list(root = "b", prefix = "", region = "us-east-1"),
+      expected = list(root = "b", prefix = NULL, region = "us-east-1")
+    ),
+    missing_region = list(
+      current  = list(root = "b2", prefix = "p/"),
+      expected = list(root = "b2", prefix = "p/", region = "us-east-1")
+    ),
+    local_root = list(
+      current  = list(type = "local", root = "/data/store", prefix = "proj/"),
+      expected = list(root = "/data/store", prefix = "proj/",
+                      region = "us-east-1")
+    ),
+    nested_prefix = list(
+      current  = list(root = "bucket", prefix = "a/b/c/", region = "ap-south-1"),
+      expected = list(root = "bucket", prefix = "a/b/c/", region = "ap-south-1")
+    )
+  )
+
+  for (nm in names(battery)) {
+    ref_in <- list(current = battery[[nm]]$current, previous = list())
+
+    ref_path <- withr::local_tempfile(fileext = ".json")
+    jsonlite::write_json(ref_in, ref_path, auto_unbox = TRUE, pretty = TRUE)
+    parsed <- .datom_parse_ref(
+      jsonlite::read_json(ref_path, simplifyVector = FALSE),
+      source = ref_path
+    )
+
+    exp <- battery[[nm]]$expected
+    expect_equal(parsed$root, exp$root, info = paste0("case: ", nm))
+    expect_equal(.datom_normalize_prefix(parsed$prefix),
+                 .datom_normalize_prefix(exp$prefix),
+                 info = paste0("case: ", nm))
+    expect_equal(parsed$region, exp$region, info = paste0("case: ", nm))
+  }
+})
+
+
+# --- .datom_resolve_ref() -----------------------------------------------------
+
+test_that("resolves current data location from ref.json", {
+  ref_data <- list(
+    current = list(
+      root = "data-bucket",
+      prefix = "proj/",
+      region = "us-west-2"
+    ),
+    previous = list()
+  )
+
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) ref_data
+  )
+
+  result <- .datom_resolve_ref(gov_conn)
+
+  expect_equal(result$root, "data-bucket")
+  expect_equal(result$prefix, "proj/")
+  expect_equal(result$region, "us-west-2")
+})
+
+test_that("resolves with NULL prefix in ref", {
+  ref_data <- list(
+    current = list(
+      root = "data-bucket",
+      region = "us-east-1"
+    ),
+    previous = list()
+  )
+
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) ref_data
+  )
+
+  result <- .datom_resolve_ref(gov_conn)
+
+  expect_equal(result$root, "data-bucket")
+  expect_null(result$prefix)
+  expect_equal(result$region, "us-east-1")
+})
+
+test_that("resolves with missing region defaults to us-east-1", {
+  ref_data <- list(
+    current = list(root = "data-bucket", prefix = "p/"),
+    previous = list()
+  )
+
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) ref_data
+  )
+
+  result <- .datom_resolve_ref(gov_conn)
+
+  expect_equal(result$region, "us-east-1")
+})
+
+test_that("emits warning when previous migration entries exist", {
+  ref_data <- list(
+    current = list(root = "new-bucket", prefix = "p/", region = "us-east-1"),
+    previous = list(
+      list(
+        root = "old-bucket",
+        prefix = "old/",
+        region = "us-east-1",
+        migrated_at = "2026-01-15T00:00:00Z",
+        sunset_at = "2026-04-15T00:00:00Z"
+      )
+    )
+  )
+
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) ref_data
+  )
+
+  expect_warning(
+    result <- .datom_resolve_ref(gov_conn),
+    "migrated"
+  )
+
+  expect_equal(result$root, "new-bucket")
+})
+
+test_that("warning includes sunset date", {
+  ref_data <- list(
+    current = list(root = "new-bucket", prefix = "p/", region = "us-east-1"),
+    previous = list(
+      list(root = "old-bucket", sunset_at = "2026-06-01")
+    )
+  )
+
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) ref_data
+  )
+
+  expect_warning(
+    .datom_resolve_ref(gov_conn),
+    "2026-06-01"
+  )
+})
+
+test_that("no warning when previous is empty list", {
+  ref_data <- list(
+    current = list(root = "bucket", prefix = "p/", region = "us-east-1"),
+    previous = list()
+  )
+
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) ref_data
+  )
+
+  expect_no_warning(
+    .datom_resolve_ref(gov_conn)
+  )
+})
+
+test_that("errors when ref.json is unreadable", {
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) {
+      cli::cli_abort("Network error")
+    }
+  )
+
+  expect_error(
+    .datom_resolve_ref(gov_conn),
+    "ref\\.json"
+  )
+})
+
+test_that("errors when current.root is missing", {
+  ref_data <- list(
+    current = list(prefix = "p/"),
+    previous = list()
+  )
+
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) ref_data
+  )
+
+  expect_error(
+    .datom_resolve_ref(gov_conn),
+    "current\\.root"
+  )
+})
+
+test_that("errors when current is NULL", {
+  ref_data <- list(previous = list())
+
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) ref_data
+  )
+
+  expect_error(
+    .datom_resolve_ref(gov_conn),
+    "current\\.root"
+  )
+})
+
+test_that("reads from correct key", {
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  captured_key <- NULL
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) {
+      captured_key <<- key
+      list(
+        current = list(root = "b", prefix = "p/", region = "us-east-1"),
+        previous = list()
+      )
+    }
+  )
+
+  .datom_resolve_ref(gov_conn)
+
+  expect_equal(captured_key, "projects/test-project/ref.json")
+})
+
+test_that("uses explicit project_name argument over conn$project_name", {
+  gov_conn <- mock_datom_conn("gov-client", root = "gov-bucket", prefix = "gov")
+
+  captured_key <- NULL
+  local_mocked_bindings(
+    .datom_storage_read_json = function(conn, key) {
+      captured_key <<- key
+      list(
+        current = list(root = "b", prefix = "p/", region = "us-east-1"),
+        previous = list()
+      )
+    }
+  )
+
+  .datom_resolve_ref(gov_conn, project_name = "explicit-name")
+
+  expect_equal(captured_key, "projects/explicit-name/ref.json")
+})
+
+
+# =============================================================================
+# .datom_resolve_ref_from_clone()
+# =============================================================================
+
+test_that(".datom_resolve_ref_from_clone reads from local clone", {
+  dir <- withr::local_tempdir()
+  proj_dir <- fs::path(dir, "projects", "myproj")
+  fs::dir_create(proj_dir)
+  jsonlite::write_json(
+    list(
+      current = list(root = "data-bucket", prefix = "data/", region = "us-east-1"),
+      previous = list()
+    ),
+    fs::path(proj_dir, "ref.json"),
+    auto_unbox = TRUE
+  )
+
+  result <- .datom_resolve_ref_from_clone(as.character(dir), "myproj")
+  expect_equal(result$root, "data-bucket")
+  expect_equal(result$prefix, "data/")
+})
+
+test_that(".datom_resolve_ref_from_clone errors when ref.json missing", {
+  dir <- withr::local_tempdir()
+  expect_error(
+    .datom_resolve_ref_from_clone(as.character(dir), "myproj"),
+    "ref.json"
+  )
+})
+
+
+# =============================================================================
+# Role-aware ref resolution: clone vs storage
+# =============================================================================
+
+test_that("developer with gov_local_path reads ref from clone (no storage call)", {
+  gov_clone <- withr::local_tempdir()
+  proj_dir <- fs::path(gov_clone, "projects", "p")
+  fs::dir_create(proj_dir)
+  jsonlite::write_json(
+    list(
+      current = list(root = "data-bucket", prefix = "data/", region = "us-east-1"),
+      previous = list()
+    ),
+    fs::path(proj_dir, "ref.json"),
+    auto_unbox = TRUE
+  )
+
+  store <- make_test_store(data_bucket = "data-bucket", data_prefix = "data/",
+                           role = "developer")
+
+  storage_called <- FALSE
+  local_mocked_bindings(
+    .datom_s3_client = function(...) list(),
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) {
+      storage_called <<- TRUE
+      list(root = "WRONG", prefix = "WRONG/", region = "us-east-1")
+    }
+  )
+
+  result <- .datom_resolve_data_location(
+    store, role = "developer",
+    project_name = "p",
+    path = NULL,
+    gov_local_path = as.character(gov_clone)
+  )
+
+  expect_equal(result$root, "data-bucket")
+  expect_false(storage_called)
+})
+
+test_that("reader (no gov_local_path) reads ref from storage", {
+  store <- make_test_store(data_bucket = "data-bucket", data_prefix = "data/",
+                           role = "reader")
+
+  storage_called <- FALSE
+  local_mocked_bindings(
+    .datom_s3_client = function(...) list(),
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) {
+      storage_called <<- TRUE
+      list(root = "data-bucket", prefix = "data/", region = "us-east-1")
+    }
+  )
+
+  result <- .datom_resolve_data_location(
+    store, role = "reader",
+    project_name = "p",
+    path = NULL,
+    gov_local_path = NULL
+  )
+
+  expect_equal(result$root, "data-bucket")
+  expect_true(storage_called)
+})
+
+test_that("developer falls back to storage when clone ref.json missing", {
+  gov_clone <- withr::local_tempdir()  # exists but no projects/p/ref.json
+
+  store <- make_test_store(data_bucket = "data-bucket", data_prefix = "data/",
+                           role = "developer")
+
+  storage_called <- FALSE
+  local_mocked_bindings(
+    .datom_s3_client = function(...) list(),
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) {
+      storage_called <<- TRUE
+      list(root = "data-bucket", prefix = "data/", region = "us-east-1")
+    }
+  )
+
+  result <- .datom_resolve_data_location(
+    store, role = "developer",
+    project_name = "p",
+    path = NULL,
+    gov_local_path = as.character(gov_clone)
+  )
+
+  expect_true(storage_called)
+  expect_equal(result$root, "data-bucket")
+})
+
+
+# =============================================================================
+# Phase 13: .datom_resolve_data_location()
+# =============================================================================
+
+test_that("returns NULL when no governance store present", {
+  data_comp <- datom_store_s3(
+    bucket = "b", access_key = "AK", secret_key = "SK", validate = FALSE
+  )
+  store <- structure(
+    list(governance = NULL, data = data_comp, role = "reader"),
+    class = "datom_store"
+  )
+
+  result <- .datom_resolve_data_location(store, role = "reader")
+  expect_null(result)
+})
+
+test_that("returns ref location when no migration (S3)", {
+  store <- make_test_store(
+    gov_bucket = "gov-bucket",
+    data_bucket = "data-bucket", data_prefix = "data/"
+  )
+
+  ref_data <- list(
+    current = list(root = "data-bucket", prefix = "data/", region = "us-east-1"),
+    previous = list()
+  )
+
+  local_mocked_bindings(
+    .datom_s3_client = function(...) list(),
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) list(root = "data-bucket", prefix = "data/", region = "us-east-1")
+  )
+
+  result <- .datom_resolve_data_location(store, role = "reader", project_name = "p")
+  expect_equal(result$root, "data-bucket")
+  expect_equal(result$prefix, "data/")
+})
+
+test_that("reader: warns on migration mismatch", {
+  store <- make_test_store(
+    data_bucket = "old-bucket", data_prefix = "old/"
+  )
+
+  local_mocked_bindings(
+    .datom_s3_client = function(...) list(),
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) list(root = "new-bucket", prefix = "new/", region = "us-east-1")
+  )
+
+  expect_warning(
+    result <- .datom_resolve_data_location(store, role = "reader", project_name = "p"),
+    "migrated"
+  )
+  expect_equal(result$root, "new-bucket")
+})
+
+test_that("warns with store root in migration warning", {
+  store <- make_test_store(
+    data_bucket = "old-bucket", data_prefix = "old/"
+  )
+
+  local_mocked_bindings(
+    .datom_s3_client = function(...) list(),
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) list(root = "new-bucket", prefix = "new/", region = "us-east-1")
+  )
+
+  expect_warning(
+    .datom_resolve_data_location(store, role = "reader", project_name = "p"),
+    "old-bucket"
+  )
+})
+
+test_that("developer: auto-pulls and succeeds when project.yaml agrees after pull", {
+  dir <- withr::local_tempdir()
+  datom_dir <- fs::path(dir, ".datom")
+  fs::dir_create(datom_dir)
+  yaml::write_yaml(
+    list(
+      project_name = "p",
+      storage = list(
+        data = list(type = "s3", root = "new-bucket", prefix = "new/", region = "us-east-1")
+      )
+    ),
+    fs::path(datom_dir, "project.yaml")
+  )
+
+  store <- make_test_store(
+    data_bucket = "old-bucket", data_prefix = "old/",
+    role = "developer"
+  )
+
+  local_mocked_bindings(
+    .datom_s3_client = function(...) list(),
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) list(root = "new-bucket", prefix = "new/", region = "us-east-1"),
+    .datom_git_pull = function(path, pat = NULL) invisible(NULL)
+  )
+
+  # Should succeed without error or warning (project.yaml already matches ref)
+  result <- expect_no_warning(
+    .datom_resolve_data_location(store, role = "developer", project_name = "p", path = as.character(dir))
+  )
+  expect_equal(result$root, "new-bucket")
+})
+
+test_that("developer: errors when project.yaml still disagrees after pull", {
+  dir <- withr::local_tempdir()
+  datom_dir <- fs::path(dir, ".datom")
+  fs::dir_create(datom_dir)
+  # project.yaml points to stale bucket (won't change after pull mock)
+  yaml::write_yaml(
+    list(
+      project_name = "p",
+      storage = list(
+        data = list(type = "s3", root = "stale-bucket", prefix = "data/", region = "us-east-1")
+      )
+    ),
+    fs::path(datom_dir, "project.yaml")
+  )
+
+  store <- make_test_store(
+    data_bucket = "old-bucket", data_prefix = "data/",
+    role = "developer"
+  )
+
+  local_mocked_bindings(
+    .datom_s3_client = function(...) list(),
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) list(root = "new-bucket", prefix = "data/", region = "us-east-1"),
+    .datom_git_pull = function(path, pat = NULL) invisible(NULL)
+  )
+
+  expect_error(
+    .datom_resolve_data_location(store, role = "developer", project_name = "p", path = as.character(dir)),
+    "disagree after git pull"
+  )
+})
+
+test_that("warns (not errors) when ref.json is unreadable at conn time", {
+  store <- make_test_store(data_bucket = "data-bucket", data_prefix = "data/")
+
+  local_mocked_bindings(
+    .datom_s3_client = function(...) list(),
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) cli::cli_abort("Network timeout")
+  )
+
+  expect_warning(
+    result <- .datom_resolve_data_location(store, role = "reader", project_name = "p"),
+    "Could not resolve ref[.]json"
+  )
+  expect_null(result)
+})
+
+
+# =============================================================================
+# Phase 13: .datom_check_ref_current() (write-time guard)
+# =============================================================================
+
+test_that("skips check when no gov_root (legacy conn)", {
+  conn <- new_datom_conn(
+    project_name = "p", root = "b", region = "us-east-1",
+    client = NULL, role = "reader", backend = "local"
+  )
+  expect_no_error(.datom_check_ref_current(conn))
+})
+
+test_that("passes when ref matches conn location", {
+  conn <- new_datom_conn(
+    project_name = "p", root = "data-bucket", prefix = "data/",
+    region = "us-east-1", client = NULL, role = "reader",
+    gov_root = "gov-bucket", gov_prefix = "gov/", gov_region = "us-east-1",
+    gov_client = NULL, backend = "local"
+  )
+
+  local_mocked_bindings(
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) list(root = "data-bucket", prefix = "data/", region = "us-east-1")
+  )
+
+  expect_no_error(.datom_check_ref_current(conn))
+})
+
+test_that("errors when ref root differs from conn root", {
+  conn <- new_datom_conn(
+    project_name = "p", root = "old-bucket", prefix = "data/",
+    region = "us-east-1", client = NULL, role = "reader",
+    gov_root = "gov-bucket", gov_prefix = "gov/", gov_region = "us-east-1",
+    gov_client = NULL, backend = "local"
+  )
+
+  local_mocked_bindings(
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) list(root = "new-bucket", prefix = "data/", region = "us-east-1")
+  )
+
+  expect_error(
+    .datom_check_ref_current(conn),
+    "Data location changed"
+  )
+})
+
+test_that("errors when ref prefix differs from conn prefix", {
+  conn <- new_datom_conn(
+    project_name = "p", root = "data-bucket", prefix = "old/",
+    region = "us-east-1", client = NULL, role = "reader",
+    gov_root = "gov-bucket", gov_prefix = "gov/", gov_region = "us-east-1",
+    gov_client = NULL, backend = "local"
+  )
+
+  local_mocked_bindings(
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) list(root = "data-bucket", prefix = "new/", region = "us-east-1")
+  )
+
+  expect_error(
+    .datom_check_ref_current(conn),
+    "Data location changed"
+  )
+})
+
+test_that("errors on any ref failure at write time", {
+  conn <- new_datom_conn(
+    project_name = "p", root = "data-bucket", prefix = "data/",
+    region = "us-east-1", client = NULL, role = "reader",
+    gov_root = "gov-bucket", gov_prefix = "gov/", gov_region = "us-east-1",
+    gov_client = NULL, backend = "local"
+  )
+
+  local_mocked_bindings(
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) cli::cli_abort("Network error")
+  )
+
+  expect_error(
+    .datom_check_ref_current(conn),
+    "Cannot write"
+  )
+})
+
+test_that("error message on write-time ref failure mentions orphaned data", {
+  conn <- new_datom_conn(
+    project_name = "p", root = "data-bucket", prefix = "data/",
+    region = "us-east-1", client = NULL, role = "reader",
+    gov_root = "gov-bucket", gov_prefix = "gov/", gov_region = "us-east-1",
+    gov_client = NULL, backend = "local"
+  )
+
+  local_mocked_bindings(
+    .datom_resolve_ref = function(gov_conn, project_name = NULL) cli::cli_abort("timeout")
+  )
+
+  expect_error(
+    .datom_check_ref_current(conn),
+    "orphaning"
+  )
+})

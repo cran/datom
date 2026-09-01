@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>The datom Model: Code in Git, Data in Cloud</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">The datom Model: Code in Git, Data in
+Cloud</h1>
+
+
+
+<blockquote>
+<p><strong>Companion to</strong>: <a href="getting-started.html">Getting
+Started</a>. Read this when you want to understand <em>why</em> datom
+split storage in two.</p>
+</blockquote>
+<p>The single design decision that shapes everything else in datom is
+this: <strong>metadata and data live in different places, and that’s
+intentional.</strong></p>
+<p>This article explains the split, the consequences that fall out of
+it, and the properties you get for free when you accept it.</p>
+<div id="the-split" class="section level2">
+<h2>The split</h2>
+<pre><code>+------------------------+         +-------------------------+
+|    Git repository      |         |    Object store         |
+|                        |         |                         |
+|  manifest.json         |         |  dm/                    |
+|  metadata.json         |         |    a8ee7a31.parquet     |
+|  version_history.json  |  ----&gt;  |    5c1a3f7b.parquet     |
+|  project.yaml          |  refers |  ex/                    |
+|                        |   to    |    f44910b5.parquet     |
+|  (everything text,     |         |                         |
+|   diffable, reviewable)|         |  (parquet bytes only,   |
+|                        |         |   keyed by SHA)         |
++------------------------+         +-------------------------+</code></pre>
+<p><strong>Metadata</strong> – the catalog of what tables exist, what
+their current and historical versions are, and where the bytes live –
+goes in a git repository. It’s small, text-based, diffable, reviewable,
+and protected by all the access controls and audit machinery your
+organization already has around git.</p>
+<p><strong>Data</strong> – the parquet bytes themselves – goes in an
+object store. Each parquet file is named by a SHA of its content. The
+git repo never holds data; it only holds <em>pointers</em> to data.</p>
+<p>This is not a storage optimization. It’s an information-architecture
+choice with downstream consequences.</p>
+</div>
+<div id="property-1-immutability-is-automatic" class="section level2">
+<h2>Property 1: Immutability is automatic</h2>
+<p>Parquet files are addressed by <strong>SHA of their content</strong>.
+Two consequences fall out:</p>
+<ul>
+<li><strong>Writing the same data twice produces the same
+filename.</strong> The second upload is either a no-op or a harmless
+overwrite of identical bytes.</li>
+<li><strong>Different data produces a different filename.</strong> A new
+version never overwrites an old one; both files coexist in the
+store.</li>
+</ul>
+<p>You don’t have to remember to copy old files before overwriting them.
+The file <em>system</em> makes overwriting impossible by construction.
+The history your <code>datom_history()</code> call shows is real – those
+parquet files are still in the store.</p>
+</div>
+<div id="property-2-the-metadata-is-reviewable-like-code" class="section level2">
+<h2>Property 2: The metadata is reviewable like code</h2>
+<p>Because metadata lives in git, every change to a project’s catalog is
+a commit. That means:</p>
+<ul>
+<li><code>git log</code> shows the history of every table.</li>
+<li><code>git blame</code> tells you which <code>datom_write()</code>
+introduced a specific version.</li>
+<li>Pull requests, branch protection, and code review apply to data
+changes the same way they apply to code changes.</li>
+<li>Restoring a project to “the way it was on March 15” is
+<code>git checkout</code>, no special tooling.</li>
+</ul>
+<p>If you’ve ever debugged a missing column by reading commit messages,
+you already understand why this matters.</p>
+</div>
+<div id="property-3-readers-dont-need-write-access" class="section level2">
+<h2>Property 3: Readers don’t need write access</h2>
+<p>The split lets datom support two roles cleanly:</p>
+<ul>
+<li><strong>Data developers</strong> have a local git clone of the
+project, push to the remote, and write to the data store.</li>
+<li><strong>Data readers</strong> connect to the data store directly –
+no git clone, no write credentials required.
+<code>datom_get_conn(store = ..., project_name = &quot;...&quot;)</code> (reader
+form, no <code>path</code>) resolves everything it needs from the
+metadata mirrored to the data store at write time: the manifest,
+per-table <code>metadata.json</code>, and versioned snapshots.</li>
+</ul>
+<p>The data store can be an object store (S3) or a local filesystem
+store (<code>datom_store_local()</code>); the reader path is the same
+either way. What readers never need is access to the git repository (the
+code store) or write credentials for the data store.</p>
+<p>A statistician with read-only access to the data store can read any
+table and reproduce any historical analysis – the metadata they need is
+already there, mirrored when the developer wrote.</p>
+</div>
+<div id="property-4-storage-is-swappable" class="section level2">
+<h2>Property 4: Storage is swappable</h2>
+<p>Because datom only knows the <em>address</em> of data through the
+metadata, not the bytes themselves, the storage backend is a
+substitution point. <code>datom_store_local()</code> puts parquet on a
+directory; <code>datom_store_s3()</code> puts parquet on S3; future
+backends (GCS, Azure Blob, etc.) drop in without touching how versions
+are computed or how history is recorded.</p>
+<p>What does <em>not</em> swap is git. The metadata still goes to a git
+remote, always.</p>
+</div>
+<div id="what-stays-in-the-metadata" class="section level2">
+<h2>What stays in the metadata</h2>
+<p>A datom project’s git repository holds, per table:</p>
+<ul>
+<li><code>metadata.json</code> – the current state (current data SHA,
+table type, size, parents).</li>
+<li><code>version_history.json</code> – an append-only log of every
+version ever written.</li>
+<li>A <code>manifest.json</code> at the project root summarizing all
+tables.</li>
+</ul>
+<p>It does <strong>not</strong> hold the data, and it never will. The
+<code>.gitignore</code> in a new project explicitly excludes parquet,
+csv, and other data formats so nobody can commit them by accident.</p>
+</div>
+<div id="what-this-isnt" class="section level2">
+<h2>What this isn’t</h2>
+<p>datom is not a content-addressed <em>blob store</em> like git-LFS or
+DVC. The key difference: datom’s metadata is a structured, queryable
+catalog – not opaque pointer files in your repo. You ask
+<code>datom_history(conn, &quot;dm&quot;)</code> and you get a data frame, not a
+<code>git log</code> of <code>.dvc</code> files. The metadata is
+designed to be read by code, not just by humans.</p>
+<p>datom is also not a database. It has no query engine, no ACID
+transactions across tables, no joins. It is a content-addressed catalog
+of immutable parquet files, and it’s deliberately not more than
+that.</p>
+</div>
+<div id="where-this-leads" class="section level2">
+<h2>Where this leads</h2>
+<p>Once you accept “metadata in git, data in data store,” several other
+datom design choices stop looking arbitrary:</p>
+<ul>
+<li>The two-repo split (governance vs. project) – the organization-scope
+governance repo is managed by the governance companion package.</li>
+<li>The <code>ref.json</code> indirection layer for portable,
+migration-ready storage.</li>
+<li>The two-flavor SHA scheme (data SHA + metadata SHA) – see <a href="design-version-shas.html">Version SHAs: Data SHA vs. Metadata
+SHA</a>.</li>
+</ul>
+<p>Each is a direct consequence of the split, applied to a specific
+problem. None of them stand on their own.</p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

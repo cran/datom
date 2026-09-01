@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Version SHAs: The Three-SHA Identity Model</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Version SHAs: The Three-SHA Identity
+Model</h1>
+
+
+
+<blockquote>
+<p><strong>Companion to</strong>: <a href="getting-started.html">Getting
+Started</a>. Read this when you’ve noticed that
+<code>datom_history()</code> shows a <code>version</code> column and a
+<code>data_sha</code> column and want to know why there is more than one
+hash – or when <code>datom_write()</code> has told you a column is not
+hashable.</p>
+</blockquote>
+<p>datom identifies a table with <strong>three SHAs</strong>, each
+answering a different question:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>SHA</th>
+<th>Question it answers</th>
+<th>Computed over</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>data_sha</code></td>
+<td><em>Is this the same table content?</em></td>
+<td>the table’s values, canonically encoded
+(<code>datom-cv1</code>)</td>
+</tr>
+<tr class="even">
+<td><code>metadata_sha</code></td>
+<td><em>Is this the same version?</em></td>
+<td>the table’s semantic metadata, as canonical JSON</td>
+</tr>
+<tr class="odd">
+<td><code>parquet_sha</code></td>
+<td><em>Are the stored bytes intact?</em></td>
+<td>the exact parquet object that was uploaded</td>
+</tr>
+</tbody>
+</table>
+<p>A fourth hash, <code>original_file_sha</code>, is recorded for tables
+onboarded from a file by <code>datom_sync()</code>. It is not part of
+table identity – it is <em>file</em> provenance, and it is what lets a
+re-scan say “this input has not changed” without reading the file.</p>
+<p>The rest of this article explains each one, the type contract
+<code>data_sha</code> depends on, and the identity decisions baked into
+it.</p>
+<div id="data_sha-the-canonical-content-hash" class="section level2">
+<h2><code>data_sha</code>: the canonical content hash</h2>
+<p><code>data_sha</code> is a hash of the table’s
+<strong>values</strong>, computed with the <code>datom-cv1</code>
+algorithm. Sketching the layout:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># per column, in table column order</span></span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>col_digest <span class="ot">&lt;-</span> <span class="fu">sha256</span>(<span class="fu">utf8</span>(type_tag) <span class="sc">||</span> <span class="fu">utf8</span>(column_name) <span class="sc">||</span> <span class="dv">0x00</span> <span class="sc">||</span> payload)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="co"># then the table</span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>data_sha <span class="ot">&lt;-</span> <span class="fu">sha256</span>(<span class="st">&quot;datom-cv1&quot;</span> <span class="sc">||</span> <span class="fu">f64le</span>(nrow) <span class="sc">||</span> <span class="fu">f64le</span>(ncol) <span class="sc">||</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a>                   <span class="fu">concat</span>(col_digest_hex ...))</span></code></pre></div>
+<p>Two properties matter more than the layout:</p>
+<ul>
+<li><strong>No I/O and no parquet.</strong> <code>data_sha</code> is
+computed from the in-memory data frame. It never writes a file, never
+calls arrow, and never coerces the container.</li>
+<li><strong>The container is not identity.</strong> A
+<code>tibble</code>, a <code>data.table</code>, and a
+<code>data.frame</code> holding the same values hash the same.
+Attributes that are not values (row names, <code>tbl_df</code> class,
+arbitrary <code>attr()</code>s) do not participate.</li>
+</ul>
+<div id="why-not-just-hash-the-parquet-bytes" class="section level3">
+<h3>Why not just hash the parquet bytes</h3>
+<p>An earlier design hashed the serialized parquet file. That is
+simpler, and wrong for a versioning tool: parquet bytes move with the
+<strong>writer</strong>, not the data. An arrow upgrade, a different
+compression default, or a different dictionary-encoding heuristic all
+produce different bytes for identical content – and every one of those
+would have minted a spurious new version.</p>
+<p>Hashing values instead of bytes decouples identity from the
+serializer. The serializer’s bytes are still hashed, but under a
+different name and for a different purpose: that is
+<code>parquet_sha</code>, below.</p>
+</div>
+</div>
+<div id="the-datom-table-contract" class="section level2">
+<h2>The datom table contract</h2>
+<p>Hashing values means datom must decide, per column type, <em>what the
+bytes of that value are</em>. That decision cannot be guessed, so
+<code>datom-cv1</code> supports a defined set of types and refuses
+everything else with specific advice.</p>
+<p>Supported: <code>logical</code>, <code>integer</code>,
+<code>double</code>, <code>character</code>, <code>factor</code>,
+<code>Date</code> (including <code>data.table::IDate</code>),
+<code>POSIXct</code>, <code>difftime</code>/<code>hms</code>,
+<code>data.table::ITime</code>, <code>bit64::integer64</code>, and
+labelled vectors (<code>haven_labelled</code>, <code>labelled</code>,
+<code>labelled_spss</code>) over any of those.</p>
+<div id="where-this-bites" class="section level3">
+<h3>Where this bites</h3>
+<p>Most clinical and analytical tables are already inside the contract.
+The cases that are not tend to arrive the same handful of ways:</p>
+<ul>
+<li><strong>A <code>tidyr::nest()</code> result</strong> carries a list
+column of data frames.</li>
+<li><strong><code>strptime()</code></strong> returns
+<code>POSIXlt</code>, not <code>POSIXct</code> (which is a list under
+the hood, and hashing a list of broken-down time parts is not the same
+question as hashing an instant).</li>
+<li><strong><code>sf</code></strong> geometry columns are
+<code>sfc</code> lists; <strong><code>units</code></strong> columns wrap
+a numeric with a unit attribute.</li>
+<li><strong>A blob column</strong> from a database round-trip is a list
+of raw vectors.</li>
+</ul>
+<p>None of these are errors in your data. They are values whose
+canonical byte form is a modelling decision, and datom asks you to make
+it explicitly rather than picking one silently.</p>
+</div>
+<div id="check-before-you-write" class="section level3">
+<h3>Check before you write</h3>
+<p><code>datom_check_hashable()</code> is the pre-flight entry point. It
+is pure – no connection, no store, no network – so you can run it on any
+data frame:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">library</span>(datom)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a>clean <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>  <span class="at">id    =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">3</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>  <span class="at">score =</span> <span class="fu">c</span>(<span class="fl">1.5</span>, <span class="fl">2.5</span>, <span class="fl">3.5</span>),</span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>  <span class="at">grp   =</span> <span class="fu">factor</span>(<span class="fu">c</span>(<span class="st">&quot;x&quot;</span>, <span class="st">&quot;y&quot;</span>, <span class="st">&quot;x&quot;</span>)),</span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>  <span class="at">day   =</span> <span class="fu">as.Date</span>(<span class="fu">c</span>(<span class="st">&quot;2026-01-01&quot;</span>, <span class="st">&quot;2026-01-02&quot;</span>, <span class="st">&quot;2026-01-03&quot;</span>))</span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a>)</span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a><span class="fu">datom_check_hashable</span>(clean)</span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a><span class="co">#&gt; ✔ All 4 columns are hashable. This table is ready for `datom_write()`.</span></span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>messy <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">id =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">2</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>messy<span class="sc">$</span>notes <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="fu">c</span>(<span class="st">&quot;a&quot;</span>, <span class="st">&quot;b&quot;</span>), <span class="st">&quot;c&quot;</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a>messy<span class="sc">$</span>z <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">1</span> <span class="sc">+</span> <span class="dv">2</span><span class="dt">i</span>, <span class="dv">3</span> <span class="sc">+</span> <span class="dv">4</span><span class="dt">i</span>)</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a>report <span class="ot">&lt;-</span> <span class="fu">datom_check_hashable</span>(messy)</span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="co">#&gt; ✖ 2 of 3 columns are not hashable.</span></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="co">#&gt; ✖ Column notes (&lt;list&gt;): List and blob columns are not hashable. Flatten to one</span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co">#&gt;   value per row with tidyr::unnest(), or serialize each element to character</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="co">#&gt;   (for example with jsonlite::toJSON() per element), before writing.</span></span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a><span class="co">#&gt; ✖ Column z (&lt;complex&gt;): Complex columns are not hashable. Split into separate</span></span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="co">#&gt;   real and imaginary numeric columns, or convert to character, before writing.</span></span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a><span class="co">#&gt; ℹ Fix these before `datom_write()`, which refuses the whole table until they are resolved.</span></span>
+<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a>report[report<span class="sc">$</span>status <span class="sc">==</span> <span class="st">&quot;unsupported&quot;</span>, <span class="fu">c</span>(<span class="st">&quot;column&quot;</span>, <span class="st">&quot;class&quot;</span>)]</span>
+<span id="cb3-14"><a href="#cb3-14" tabindex="-1"></a><span class="co">#&gt;   column   class</span></span>
+<span id="cb3-15"><a href="#cb3-15" tabindex="-1"></a><span class="co">#&gt; 2  notes    list</span></span>
+<span id="cb3-16"><a href="#cb3-16" tabindex="-1"></a><span class="co">#&gt; 3      z complex</span></span></code></pre></div>
+<p>The report is returned invisibly as a data frame, so it composes:
+filter it, <code>kable()</code> it, or assert on it in a pipeline.</p>
+<p><code>datom_write()</code> runs the same check itself,
+<strong>before</strong> it touches git or storage, and reports every
+offending column in one error rather than one per attempt. A refusal
+leaves no partial state behind.</p>
+</div>
+<div id="the-recourse-table" class="section level3">
+<h3>The recourse table</h3>
+<p>Each refused type has one canonical piece of advice. The table below
+is generated by running <code>datom_check_hashable()</code> over one
+fixture per case, so it is the same text <code>datom_write()</code>
+aborts with – the documentation cannot drift from the code.</p>
+<table>
+<colgroup>
+<col width="7%" />
+<col width="92%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Column class</th>
+<th align="left">Recourse</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">POSIXlt/POSIXt</td>
+<td align="left">POSIXlt columns are not hashable. Convert to POSIXct
+with as.POSIXct() before writing.</td>
+</tr>
+<tr class="even">
+<td align="left">sfc</td>
+<td align="left">sf geometry (sfc) columns are not hashable. Convert to
+WKT text with sf::st_as_text() before writing.</td>
+</tr>
+<tr class="odd">
+<td align="left">list</td>
+<td align="left">Nested data-frame (list) columns are not hashable.
+Model the inner table as its own datom table joined by a key with
+datom_parent() lineage, or flatten it with tidyr::unnest(), before
+writing.</td>
+</tr>
+<tr class="even">
+<td align="left">list</td>
+<td align="left">List and blob columns are not hashable. Flatten to one
+value per row with tidyr::unnest(), or serialize each element to
+character (for example with jsonlite::toJSON() per element), before
+writing.</td>
+</tr>
+<tr class="odd">
+<td align="left">units</td>
+<td align="left">units columns are not hashable. Drop the unit with
+units::drop_units() and record the unit in the column name or a
+companion column (audit-friendly), before writing.</td>
+</tr>
+<tr class="even">
+<td align="left">yearmon</td>
+<td align="left">zoo::yearmon / yearqtr and chron columns are not
+hashable. Convert to Date/POSIXct or ISO-8601 text before writing.</td>
+</tr>
+<tr class="odd">
+<td align="left">complex</td>
+<td align="left">Complex columns are not hashable. Split into separate
+real and imaginary numeric columns, or convert to character, before
+writing.</td>
+</tr>
+<tr class="even">
+<td align="left">raw</td>
+<td align="left">Raw columns are not hashable. Encode the bytes as
+character (for example base64) before writing.</td>
+</tr>
+<tr class="odd">
+<td align="left">myclass</td>
+<td align="left">Columns of this class are not hashable. Convert to a
+supported type (logical, integer, double, character, factor, Date,
+POSIXct, difftime/hms, or bit64::integer64) before writing.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="the-ingestion-allowlist" class="section level3">
+<h3>The ingestion allowlist</h3>
+<p><code>datom_sync()</code> onboards <strong>flat tabular files
+only</strong>: <code>csv</code>, <code>tsv</code>, <code>txt</code>,
+<code>psv</code>, <code>parquet</code>, <code>sas7bdat</code>,
+<code>xpt</code>, <code>sav</code>, <code>zsav</code>, <code>por</code>,
+<code>dta</code>, <code>xls</code>, <code>xlsx</code>. Anything else –
+<code>.rds</code>, <code>.json</code>, <code>.xml</code> – is refused up
+front. <code>datom_sync_manifest()</code> flags it as
+<code>unsupported_format</code> and still processes its allowlisted
+siblings; <code>datom_sync()</code> reports the same recourse in the
+<code>error</code> column for that row.</p>
+<p>The reason is the table contract: a container format can deserialize
+to anything, including the list and exotic columns the hash refuses.
+Refusing at the door keeps the failure legible (“this format is not
+onboarded”) instead of deferring it to a type error deep in the
+write.</p>
+<p><strong>The escape hatch, and its tradeoff.</strong> You can always
+read an unsupported source yourself and pass the resulting data frame to
+<code>datom_write()</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>dm <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="st">&quot;dm.rds&quot;</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="fu">datom_write</span>(conn, <span class="at">data =</span> dm, <span class="at">name =</span> <span class="st">&quot;dm&quot;</span>)</span></code></pre></div>
+<p>The rule to know: that table is <strong>derived</strong>, not
+imported. It has no <code>original_file_sha</code>, so input-file change
+detection does not apply to it. A re-run will not report “unchanged”
+from the file’s bytes; it compares the data. If you need file-level
+change detection for that source, convert it to CSV or parquet once and
+let <code>datom_sync()</code> onboard it.</p>
+</div>
+</div>
+<div id="the-identity-decisions" class="section level2">
+<h2>The identity decisions</h2>
+<p>Every entry below is a deliberate choice about what counts as “the
+same table”.</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Decision</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>logical</code>, <code>integer</code>, <code>double</code>
+unify (same encoding, same tag)</td>
+<td><code>1L</code> and <code>1</code> are the same number.
+Round-tripping a table through CSV, parquet, or a database routinely
+flips storage type without changing the data.</td>
+</tr>
+<tr class="even">
+<td>Factor <strong>levels</strong> and <strong>orderedness</strong> are
+not identity</td>
+<td>A factor’s values are hashed as character. Re-leveling for a plot,
+or dropping unused levels, must not mint a new data version.</td>
+</tr>
+<tr class="odd">
+<td>Value <strong>labels</strong> are not identity</td>
+<td><code>haven_labelled</code> columns strip to their underlying type.
+A relabelled SAS import carries the same numbers.</td>
+</tr>
+<tr class="even">
+<td><code>POSIXct</code> <strong>tzone</strong> is not identity</td>
+<td>The value hashed is the instant (epoch seconds). <code>tzone</code>
+is a display attribute; the same instant printed in two zones is one
+instant.</td>
+</tr>
+<tr class="odd">
+<td>All <code>NaN</code> payloads collapse to one canonical
+<code>NaN</code>; <code>-0</code> encodes as <code>+0</code></td>
+<td><code>0/0</code> and <code>NaN</code> are indistinguishable
+arithmetically, and IEEE-754 leaves NaN payload bits and signed zero to
+the platform. Letting them differ would make identity
+platform-dependent.</td>
+</tr>
+<tr class="even">
+<td><code>NA_real_</code> stays distinct from <code>NaN</code></td>
+<td>“Missing” and “not a number” are different statements about the
+data, and R keeps them apart.</td>
+</tr>
+<tr class="odd">
+<td>Doubles are hashed <strong>bit-exact</strong> – no rounding, no
+tolerance</td>
+<td>A tolerance would make identity non-transitive (a ~ b and b ~ c but
+a != c). If a pipeline produces last-bit differences, that is a fact
+about the pipeline; round explicitly if you want it hidden.</td>
+</tr>
+<tr class="even">
+<td>Unicode NFC and NFD forms differ</td>
+<td>Normalizing would require an ICU dependency and a normalization-form
+decision baked into every future version. Byte-identical text is the
+narrow, stable promise.</td>
+</tr>
+<tr class="odd">
+<td>Row order and column order are <strong>significant</strong>; nothing
+is sorted</td>
+<td>Sorting to make identity order-independent needs a collation order,
+which is locale-dependent – reintroducing the platform dependence the
+rest of this design removes. A reordered table is a different table;
+<code>arrange()</code> deliberately if order should not matter.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>On the apparent asymmetry</strong>: <code>NaN</code> payloads
+are canonicalized while NFD text is not, and storage types unify while
+row order does not. The line is drawn at <strong>platform
+non-determinism</strong>, not at “things a human would call equivalent”.
+Where the same logical value can have different bytes for reasons
+outside the user’s control (NaN payload bits, signed zero,
+integer-vs-double storage after a round-trip), datom canonicalizes –
+otherwise identity would depend on the machine. Where a difference is a
+real, visible, user-controlled property of the data (row order, NFC vs
+NFD, secs vs mins), datom preserves it: collapsing those would need a
+policy decision that belongs to the user, and any policy datom picked
+would be wrong for someone.</p>
+</div>
+<div id="metadata_sha-the-version" class="section level2">
+<h2><code>metadata_sha</code>: the version</h2>
+<p><code>metadata_sha</code> is what <code>datom_history()</code> calls
+<code>version</code> and what you pass to
+<code>datom_read(version = ...)</code>. It hashes the table’s semantic
+metadata:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>volatile  <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">&quot;created_at&quot;</span>, <span class="st">&quot;datom_version&quot;</span>, <span class="st">&quot;parquet_sha&quot;</span>,</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>               <span class="st">&quot;column_hashes&quot;</span>, <span class="st">&quot;size_bytes&quot;</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>semantic  <span class="ot">&lt;-</span> metadata[<span class="fu">setdiff</span>(<span class="fu">names</span>(metadata), volatile)]</span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>sorted    <span class="ot">&lt;-</span> semantic[<span class="fu">sort</span>(<span class="fu">names</span>(semantic), <span class="at">method =</span> <span class="st">&quot;radix&quot;</span>)]</span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>canonical <span class="ot">&lt;-</span> jsonlite<span class="sc">::</span><span class="fu">toJSON</span>(sorted, <span class="at">auto_unbox =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a>digest<span class="sc">::</span><span class="fu">digest</span>(canonical, <span class="at">algo =</span> <span class="st">&quot;sha256&quot;</span>, <span class="at">serialize =</span> <span class="cn">FALSE</span>)</span></code></pre></div>
+<p>Three details are load-bearing:</p>
+<ol style="list-style-type: decimal">
+<li><strong>The JSON canonical form is hashed, not the R
+object.</strong> R’s <code>serialize()</code> is type-sensitive
+(<code>10L</code> and <code>10</code> differ); JSON-parsed metadata has
+lost that distinction. A reader pulling metadata from storage must
+compute the same <code>metadata_sha</code> as the writer who built it in
+memory, so the shared representation is the JSON text.
+<code>serialize = FALSE</code> is what makes <code>digest()</code> hash
+those bytes.</li>
+<li><strong><code>method = &quot;radix&quot;</code> sorts field names by byte
+value.</strong> Plain <code>sort()</code> is locale-collated, so two
+machines with different <code>LC_COLLATE</code> would order fields
+differently and produce different versions for identical metadata.</li>
+<li><strong>The volatile set is excluded on purpose.</strong>
+<code>created_at</code> and <code>datom_version</code> are wall-clock
+and package facts. <code>parquet_sha</code> and <code>size_bytes</code>
+move with the arrow version for identical content – letting them in
+would undo the whole point of hashing values. <code>column_hashes</code>
+is a deterministic function of the same values that produce
+<code>data_sha</code>, so it carries no independent information.</li>
+</ol>
+<p>Conversely, <code>original_file_sha</code> and <code>hash_algo</code>
+<strong>are</strong> semantic: a new source file is a new version of the
+table’s provenance, and a new hash algorithm is a new identity
+regime.</p>
+<div id="the-dedup-guard-is-full-history" class="section level3">
+<h3>The dedup guard is full-history</h3>
+<p>When a version’s <code>metadata_sha</code> already appears
+<strong>anywhere</strong> in <code>version_history.json</code>, no entry
+is appended – the current pointer in <code>metadata.json</code> is still
+updated. This matters when you re-sync an older file that
+content-matches: without a full-history scan, that write would append a
+second entry with a <code>version</code> value already present, and a
+later <code>datom_read(version = ...)</code> would report the SHA as
+ambiguous.</p>
+</div>
+</div>
+<div id="parquet_sha-stored-object-integrity" class="section level2">
+<h2><code>parquet_sha</code>: stored-object integrity</h2>
+<p><code>parquet_sha</code> is the SHA-256 of the exact parquet object
+in storage. It is not identity – it is a tamper and corruption
+check:</p>
+<ul>
+<li>On read, the downloaded object is hashed and compared
+<strong>before</strong> parsing. A mismatch aborts with the key, the
+expected hash, and the actual one; it never hands you data it cannot
+vouch for.</li>
+<li>When a write is <code>metadata_only</code> (the content is
+unchanged), the current <code>parquet_sha</code> is <strong>carried
+forward</strong> and nothing is uploaded.</li>
+<li>When a write reverts to content already in history, the recorded
+<code>parquet_sha</code> is <strong>reused</strong> and the stored
+object is left alone. Re-serializing can differ byte-for-byte, which
+would break the older version’s integrity pin for no benefit.</li>
+<li>Metadata written before this hash existed has no
+<code>parquet_sha</code>, and the check is <strong>skipped</strong>
+rather than failed – a read-time grace, not a migration.</li>
+</ul>
+</div>
+<div id="change-classification" class="section level2">
+<h2>Change classification</h2>
+<p>Every <code>datom_write()</code> (including the one inside
+<code>datom_sync()</code>) lands in exactly one of three outcomes:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Outcome</th>
+<th>When</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>none</code></td>
+<td><code>data_sha</code> and <code>metadata_sha</code> both
+unchanged</td>
+<td>no commit, no upload, no history entry</td>
+</tr>
+<tr class="even">
+<td><code>metadata_only</code></td>
+<td>same <code>data_sha</code>, different <code>metadata_sha</code>
+(e.g. a re-export with new <code>original_file_sha</code>, or new
+parents)</td>
+<td>new version, <code>parquet_sha</code> carried forward, <strong>no
+upload</strong></td>
+</tr>
+<tr class="odd">
+<td><code>full</code></td>
+<td><code>data_sha</code> changed</td>
+<td>new version, parquet stored at
+<code>{name}/{data_sha}.parquet</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>metadata_only</code> case is the one that pays for the
+whole design: an EDC system re-exporting the same data with a new
+timestamp in the header produces different file bytes and identical
+content. datom records the new provenance and stores nothing twice.</p>
+</div>
+<div id="the-column-index" class="section level2">
+<h2>The column index</h2>
+<p>Alongside <code>data_sha</code>, metadata carries
+<code>column_hashes</code>: an ordered array of
+<code>{name, sha}</code>, one entry per column, in table column order,
+untruncated. It is the same per-column digest that fed
+<code>data_sha</code>, computed once and reused.</p>
+<p>Two things follow. <code>data_sha</code> can be re-derived from the
+index plus the dimensions without downloading any data, which makes it
+cheaply self-checkable. And two versions that differ in exactly one
+column differ in exactly one entry – the anchor a future column-level
+diff builds on.</p>
+</div>
+<div id="how-far-the-cross-language-claim-goes" class="section level2">
+<h2>How far the cross-language claim goes</h2>
+<ul>
+<li><strong>Within R, pinned with <code>renv</code>:
+guaranteed.</strong> The goldens in the test suite pin the byte layout
+across the supported platform matrix.</li>
+<li><strong>The specification is language-implementable.</strong>
+<code>datom-cv1</code> is defined in terms of bytes – UTF-8 tags,
+little-endian IEEE-754 doubles, NUL-terminated strings, SHA-256 – not R
+semantics. <code>dev/datom_cv1_reference.R</code> is a standalone base-R
++ <code>digest</code> reference implementation that the package is
+tested byte-for-byte against, and it doubles as the spec any other
+language would implement. What is <strong>not</strong> claimed is that
+an arbitrary Python or Julia reader will agree by accident; agreement
+requires implementing the same encodings, starting with that
+reference.</li>
+<li><strong>Raw-file onboarding identity is language-independent
+today.</strong> <code>original_file_sha</code> is a SHA-256 of the
+file’s bytes, so any tool in any language computes it identically.
+Change detection on inputs therefore does not depend on the hashing
+algorithm at all.</li>
+</ul>
+<div id="one-caveat-that-is-not-ours-to-fix" class="section level3">
+<h3>One caveat that is not ours to fix</h3>
+<p><code>data_sha</code> is a portable identity of <em>doubles</em>.
+Getting from <strong>text to doubles</strong> is a separate step, and in
+base R it is neither correctly rounded nor platform-independent. R does
+its own decimal parsing (<code>R_strtod</code> in
+<code>src/main/util.c</code>): it accumulates digits into a
+<code>long double</code> and then scales by a power of ten. So the
+result depends on how wide <code>long double</code> is on the build –
+and <code>as.numeric()</code>, decimal literals, <code>scan()</code> and
+<code>read.csv()</code> all go through it.</p>
+<p>This is known, accepted R behaviour rather than a bug: CRAN runs a
+dedicated check flavour with R configured
+<code>--disable-long-double</code> precisely because results differ, and
+package authors are told to tolerate it.</p>
+<p>Check your own platform in one line:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>.Machine<span class="sc">$</span>sizeof.longdouble   <span class="co"># 8 means long double == double</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="co">#&gt; [1] 8</span></span></code></pre></div>
+<p><code>8</code> means no extra precision, and decimal parsing on that
+build deviates from the correctly-rounded value. It is
+<strong>not</strong> an Apple-versus-Intel split:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Build</th>
+<th><code>long double</code></th>
+<th>Decimal parsing</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>x86_64 (Linux, Windows, Intel mac)</td>
+<td>80-bit extended</td>
+<td>agrees with correct rounding on everything tested</td>
+</tr>
+<tr class="even">
+<td>aarch64 <strong>Linux</strong>, s390x, riscv64</td>
+<td>128-bit quad</td>
+<td>agrees</td>
+</tr>
+<tr class="odd">
+<td><strong>Apple silicon macOS</strong>, 32-bit ARM</td>
+<td>same as <code>double</code></td>
+<td><strong>deviates</strong></td>
+</tr>
+<tr class="even">
+<td>any build with <code>--disable-long-double</code> (CRAN’s noLD
+flavour)</td>
+<td>forced to <code>double</code></td>
+<td><strong>deviates</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Note that Linux and macOS on the <em>same</em> arm64 chip family fall
+on opposite sides – the variable is the <code>long double</code> width,
+not the architecture.</p>
+<p><strong>When it bites.</strong> Deviation is possible whenever
+<code>mantissa * 10^exponent</code> cannot be reached by a single
+correctly-rounded operation at the platform’s <code>long double</code>
+precision – that is, when the accumulated mantissa exceeds the
+significand, or <code>10^|exponent|</code> is not itself exactly
+representable. <code>10^22</code> is the largest power of ten exactly
+representable as a double, and <code>10^23</code> the first that is not,
+which is why on Apple silicon a bare <code>1e-23</code> is the first
+one-digit value to drift. Longer mantissas drift sooner:
+<code>3.14159265358979e-9</code> is already 1 ULP off, and
+<code>1e300</code> / <code>1e-300</code> are 4. Short decimals –
+<code>0.1</code>, <code>1</code>, <code>1e15</code>,
+<code>3.14159265358979</code> – are exact and agree everywhere, because
+only a single rounding occurs.</p>
+<p><strong>The consequence for datom.</strong> Two machines whose builds
+fall on opposite sides of that table can parse <em>different
+doubles</em> from the same CSV text, and will then compute different
+<code>data_sha</code> values – both correct, for genuinely different
+tables. No hash can paper over it; the divergence happens before datom
+sees the data.</p>
+<p>Mitigations, in order of preference:</p>
+<ul>
+<li><strong>Read via <code>arrow</code>, or store as parquet.</strong>
+Arrow’s CSV reader uses <code>fast_float</code>, which is correctly
+rounded and platform-independent by design; parquet stores the doubles
+themselves, so no decimal parsing happens at all. This is the
+recommendation.</li>
+<li><strong>Keep the ingesting platform fixed</strong> for a given table
+if you must go through base-R CSV reading.</li>
+<li><strong>For exact literals in code</strong>, use C99 hex-float
+notation – <code>0x1.999999999999ap-4</code> is exactly
+<code>0.1</code>, and <code>0x1.fcp+996</code> a large value with no
+base-10 rounding anywhere. Documented in <code>?NumericConstants</code>
+and portable.</li>
+</ul>
+<p>One warning: <code>data.table::fread()</code> is <strong>not</strong>
+a fix. It has its own parser that is also not correctly rounded, and its
+errors differ from base R’s – the two can disagree on the same
+string.</p>
+<p>Worth keeping in perspective: this is a property of the platform’s
+decimal parser, not of datom, and it affects any analysis reading that
+CSV with or without datom. What datom adds is that the difference
+becomes <em>visible</em> instead of silent.</p>
+</div>
+</div>
+<div id="what-you-can-rely-on" class="section level2">
+<h2>What you can rely on</h2>
+<ul>
+<li>A version is uniquely identified by its <code>metadata_sha</code>,
+and that SHA never appears twice in a table’s history.</li>
+<li>The same content under different provenance shares one
+<code>data_sha</code> and one stored parquet object, with a distinct
+<code>metadata_sha</code> per version.</li>
+<li>Identical writes are no-ops at every layer: no commit, no upload, no
+history entry.</li>
+<li>A reader on another machine, in another locale, computes the same
+<code>metadata_sha</code> as the writer.</li>
+<li>Data you read back is the data that was written, or the read fails
+loudly.</li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
