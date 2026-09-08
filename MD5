@@ -1,7 +1,7 @@
-1a8f69389262bd1b46975afce4dd51d1 *DESCRIPTION
+921ba8b14511afd2ee195f269c2c94c8 *DESCRIPTION
 192e41d5257f9c500fcc1924f75bbee9 *LICENSE
 a3527b3c75fbead3f535721196145832 *NAMESPACE
-7a400cc94d0f64c1ca8a68db8334f7e2 *NEWS.md
+d8a19c246d6ec3c50ce89d66e50cf106 *NEWS.md
 63e4261b2ca02fa76d75ad629dbffb09 *R/conn.R
 031821161741f2af7ed662219016f7d7 *R/datom-package.R
 12ef6d7f4c675bd5c5008eb03d370a84 *R/example-data.R
@@ -213,13 +213,14 @@ d560848058c38a9aa511d9d32dc2db6b *man/print.datom_store_s3.Rd
 8758a995a67f1ae332741dc1459a6f6e *man/print.datom_store_s3_creds.Rd
 d05058928560ddd0141761104d464b50 *man/print.datom_summary.Rd
 402892d8aae8a0247acc21238c257df2 *tests/testthat.R
+8a2631076b06fd90b842ef60c98d615b *tests/testthat/helper-git.R
 ea3eb0102a4564397f8d6c2298705173 *tests/testthat/helper-mock.R
 0f678b0b8b351aebb4397147f33d450a *tests/testthat/setup.R
-e9ec072acc6466df96bccc4a6adfe63e *tests/testthat/test-conn.R
+d1af42111581af1c01506fc08c2badc9 *tests/testthat/test-conn.R
 7428770330eb3273c9e79f3f2fb3d910 *tests/testthat/test-example-data.R
 d332802ec5bae78c165446132c07b93f *tests/testthat/test-governance_json.R
 0942ac25d7b2be9bc9f8f5d9cd5d7763 *tests/testthat/test-hashable.R
-b033e1e442ce8925a3b7576a9edbec50 *tests/testthat/test-identity-contract.R
+f7716d65a4c05f5c35619f2717e9b814 *tests/testthat/test-identity-contract.R
 15b2a21c565350c1206b2504d861e4d6 *tests/testthat/test-lineage-union.R
 1ae12659d8a25027f3b8c37276457c1c *tests/testthat/test-namespace.R
 1b4bf883dc5dae1bf4cd6423b601a2d4 *tests/testthat/test-parent.R
@@ -231,8 +232,8 @@ c98358d84bd710fbb97ad1500e5cc401 *tests/testthat/test-repo.R
 9a86359a35557a3ba42dbbf5cb78f55b *tests/testthat/test-storage.R
 b875b9e6712935b98b33bd04109a3154 *tests/testthat/test-store.R
 489943915063362df0a49ccfc4e5a847 *tests/testthat/test-summary.R
-c97e4768beb694e0e712256934f34506 *tests/testthat/test-sync.R
-9646fdd2d958666487569d9ef07dd1ba *tests/testthat/test-utils-git.R
+1a591a847cca637d53f988fc5704b4e9 *tests/testthat/test-sync.R
+666e8eeeadb6d3dbd9ebb9e0ced20039 *tests/testthat/test-utils-git.R
 f1294ca3d54cdfd0c05d728b79bc59ed *tests/testthat/test-utils-gov.R
 fa2a8ec48b577cb6e7b718502a2586a8 *tests/testthat/test-utils-local.R
 0ef4ef9163a48be3aff731ee768e8d9d *tests/testthat/test-utils-path.R
