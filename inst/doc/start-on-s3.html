@@ -361,355 +361,341 @@ border-color: var(--bs-warning, #ffc107);
 </style>
 <div class="datom-callout datom-callout-goal" markdown="1">
 <p><strong>Goal:</strong> Stand up a versioned datom project whose data
-lives directly in <strong>Amazon S3</strong> and onboard data using
-<code>datom_sync()</code>. The same progressive workflow from <a href="getting-started.html">Getting Started</a> applies here – one file,
-update, no-op, batch – with the only difference being which store you
-build. This is the “start me in object storage” path.</p>
+lives in <strong>Amazon S3</strong>, and onboard a study’s files with
+<code>datom_sync()</code>. The steps are the ones from <a href="getting-started.html">Getting Started</a> – one file, an update, a
+no-op, a batch – and the only difference is the store you build.</p>
 </div>
 <blockquote>
-<p><strong>Want to dabble locally first?</strong> Start with <a href="getting-started.html">Getting Started</a> instead – it uses a
-local filesystem store and needs no AWS account. The two paths use the
-<strong>same functions</strong>; the only difference is which store you
-build. You can read either one first.</p>
+<p><strong>Want to try datom locally first?</strong> Start with <a href="getting-started.html">Getting Started</a>. It uses a folder on
+your machine instead of S3 and needs no AWS account. The functions are
+the same.</p>
 </blockquote>
-<p>You are the data engineer for <strong>STUDY-001</strong>, a Phase II
-clinical trial, and your team already works in S3. There is no reason to
-stage data on a laptop: you want the very first extract to land in the
-shared object store, versioned from commit one. datom supports that
-directly. Metadata still lives in a git repository (so version history
-is diff-able and reproducible across machines); only the choice of data
-store changes.</p>
+<p>You look after the data for <strong>study001</strong>, a clinical
+trial, and your team already works in S3. You want the first extract to
+land in the shared bucket, versioned from day one. datom keeps the data
+in S3 and the record of every version in a git repository, so the
+history can be read and reproduced from any machine.</p>
 <div class="datom-callout datom-callout-tip" markdown="1">
 <p><strong>Two locations, two roles:</strong></p>
 <ul>
-<li><strong>Input folder</strong> (mutable, disposable) – a landing zone
-for data not yet onboarded. Files here can be overwritten or deleted
-freely. Re-syncing already-onboarded content is a no-op. Nothing here is
-the source of truth.</li>
-<li><strong>Storage</strong> (immutable, permanent) – once
-<code>datom_sync()</code> onboards a file, storage holds the versioned,
-content-addressed copy in S3. The original input file is no longer
-needed; the onboarded data stands on its own.</li>
+<li><strong>Input folder</strong> – where new files land before datom
+takes them in. Files here can be overwritten or deleted. Syncing a file
+datom already holds does nothing.</li>
+<li><strong>Storage</strong> – once <code>datom_sync()</code> takes a
+file in, S3 holds a versioned copy. The input file is no longer
+needed.</li>
 </ul>
 </div>
 <div id="requirements" class="section level2">
 <h2>Requirements</h2>
-<p>datom keeps <strong>metadata in git</strong> and <strong>data
-wherever you tell it to live</strong>. For this article that is an S3
-bucket. You need three things:</p>
 <ul>
 <li><strong>A GitHub account</strong> with a personal access token (PAT)
-scoped to <code>repo</code>. Store it in your OS keychain once with
-<code>keyring::key_set(&quot;GITHUB_PAT&quot;)</code>. The <code>gh</code> CLI is
-<strong>not</strong> required – datom creates the metadata repo through
-the GitHub REST API directly using your PAT.</li>
-<li><strong>An S3 bucket</strong> you can read and write. datom does
-<strong>not</strong> create buckets: bucket lifecycle (encryption,
-versioning, retention) is your organization’s policy domain. A common
-convention is one bucket per study, with raw data at the bucket root (an
-empty prefix) and derived products under named prefixes
-(<code>adam/</code>, <code>tlf/</code>).</li>
-<li><strong>AWS credentials</strong> (an access key and secret key)
-authorized for that bucket.</li>
+scoped to <code>repo</code>. datom creates the metadata repository
+through the GitHub API with it; the <code>gh</code> CLI is not
+needed.</li>
+<li><strong>An S3 bucket</strong> you can read and write. datom does not
+create buckets: encryption, versioning and retention are your
+organization’s policy. This article uses one bucket per study, with a
+folder per project inside it.</li>
+<li><strong>AWS credentials</strong> (an access key and a secret key)
+for that bucket.</li>
+<li><strong>The <code>git2r</code>, <code>rio</code> and
+<code>keyring</code> packages.</strong> datom uses <code>git2r</code>
+for the metadata repository and <code>rio</code> to read the files you
+sync; <code>keyring</code> holds your secrets in the OS keychain.</li>
 </ul>
-<div class="datom-callout datom-callout-tip" markdown="1">
-<p><strong>Verify your keyring setup</strong> before continuing:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">nzchar</span>(keyring<span class="sc">::</span><span class="fu">key_get</span>(<span class="st">&quot;GITHUB_PAT&quot;</span>))   <span class="co"># should return TRUE</span></span></code></pre></div>
+<p>Store the three secrets in your keychain once:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a>keyring<span class="sc">::</span><span class="fu">key_set</span>(<span class="at">service =</span> <span class="st">&quot;GITHUB_PAT&quot;</span>)</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>keyring<span class="sc">::</span><span class="fu">key_set</span>(<span class="at">service =</span> <span class="st">&quot;AWS_ACCESS_KEY_ID&quot;</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a>keyring<span class="sc">::</span><span class="fu">key_set</span>(<span class="at">service =</span> <span class="st">&quot;AWS_SECRET_ACCESS_KEY&quot;</span>)</span></code></pre></div>
 </div>
+<div id="load-your-secrets" class="section level2">
+<h2>Load your secrets</h2>
+<p>This is the only place the keychain is read. Everything after it
+reads the environment with <code>Sys.getenv()</code>, so the secrets
+never appear in your code.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">Sys.setenv</span>(</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>  <span class="at">GITHUB_PAT            =</span> keyring<span class="sc">::</span><span class="fu">key_get</span>(<span class="at">service =</span> <span class="st">&quot;GITHUB_PAT&quot;</span>),</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a>  <span class="at">AWS_ACCESS_KEY_ID     =</span> keyring<span class="sc">::</span><span class="fu">key_get</span>(<span class="at">service =</span> <span class="st">&quot;AWS_ACCESS_KEY_ID&quot;</span>),</span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>  <span class="at">AWS_SECRET_ACCESS_KEY =</span> keyring<span class="sc">::</span><span class="fu">key_get</span>(<span class="at">service =</span> <span class="st">&quot;AWS_SECRET_ACCESS_KEY&quot;</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>)</span></code></pre></div>
+<p>On CI or in a container, set these three environment variables
+through your platform’s secret store and skip this chunk.</p>
 </div>
-<div id="configure-your-environment" class="section level2">
-<h2>Configure your environment</h2>
-<p>Everything machine-specific lives here. Credentials have several
-valid sources, so they get their own section (and their own chunks)
-below; set the rest once:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">library</span>(datom)</span>
-<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="fu">library</span>(fs)</span>
-<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a></span>
-<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a><span class="co"># --- Settings you control --------------------------------------------------</span></span>
-<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>project_name <span class="ot">&lt;-</span> <span class="st">&quot;STUDY_001&quot;</span>        <span class="co"># logical project name (recorded in metadata)</span></span>
-<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>repo_name    <span class="ot">&lt;-</span> <span class="st">&quot;study-001-data&quot;</span>   <span class="co"># GitHub repo name for the metadata repo</span></span>
-<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a></span>
-<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a>bucket <span class="ot">&lt;-</span> <span class="st">&quot;study-001-data&quot;</span>         <span class="co"># an S3 bucket you can read/write</span></span>
-<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a>                                   <span class="co">#   (datom does NOT create buckets)</span></span>
-<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a>prefix <span class="ot">&lt;-</span> <span class="cn">NULL</span>                     <span class="co"># raw data at the bucket root; use e.g.</span></span>
-<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a>                                   <span class="co">#   &quot;adam/&quot; for a derived-products prefix</span></span>
-<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a>region <span class="ot">&lt;-</span> <span class="st">&quot;us-east-1&quot;</span>              <span class="co"># the bucket&#39;s AWS region</span></span>
-<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a></span>
-<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a><span class="co"># Local working directory for the metadata git clone. The data itself never</span></span>
-<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a><span class="co"># lands here -- it goes straight to S3. A temp dir is fine for this walkthrough.</span></span>
-<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a>dev_dir <span class="ot">&lt;-</span> <span class="fu">path</span>(<span class="fu">tempdir</span>(), <span class="st">&quot;study_001_dev&quot;</span>)</span>
-<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a></span>
-<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a><span class="co"># GitHub PAT (scoped to `repo`), read from your OS keychain by name.</span></span>
-<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a>github_pat <span class="ot">&lt;-</span> keyring<span class="sc">::</span><span class="fu">key_get</span>(<span class="st">&quot;GITHUB_PAT&quot;</span>)</span>
-<span id="cb2-20"><a href="#cb2-20" tabindex="-1"></a><span class="co"># ---------------------------------------------------------------------------</span></span></code></pre></div>
+<div id="settings" class="section level2">
+<h2>Settings</h2>
+<p>Every value used more than once is set here, so changing one means
+changing it in one place.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="fu">library</span>(datom)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="co"># --- Settings you control ----------------------------------------------------</span></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a>bucket           <span class="ot">&lt;-</span> <span class="st">&quot;study001&quot;</span>            <span class="co"># one bucket per study</span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a>region           <span class="ot">&lt;-</span> <span class="st">&quot;us-east-1&quot;</span></span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a>project_imported <span class="ot">&lt;-</span> <span class="st">&quot;study001-imported&quot;</span>   <span class="co"># recorded in the project&#39;s metadata</span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a>prefix_imported  <span class="ot">&lt;-</span> <span class="st">&quot;imported/&quot;</span>           <span class="co"># this project&#39;s folder in the bucket</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a>repo_imported    <span class="ot">&lt;-</span> <span class="st">&quot;study001-imported&quot;</span>   <span class="co"># GitHub repo name</span></span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="co"># Local working folder for the metadata repository. The data never lands here;</span></span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a><span class="co"># it goes straight to S3.</span></span>
+<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a>workdir_imported <span class="ot">&lt;-</span> fs<span class="sc">::</span><span class="fu">path</span>(<span class="fu">tempdir</span>(), <span class="st">&quot;study001-imported&quot;</span>)</span></code></pre></div>
+<p>The project, repo and folder names match by convention only. They are
+separate settings because they do not have to match.</p>
 </div>
-<div id="set-your-aws-credentials" class="section level2">
-<h2>Set your AWS credentials</h2>
-<p><code>datom_store_s3()</code> takes <code>access_key</code> and
-<code>secret_key</code> as plain strings. datom never reads them from
-the environment on your behalf – you pass the values in explicitly.
-<strong>Run exactly one</strong> of the chunks below, whichever fits
-your environment, then continue.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="co"># Option A -- keyring (recommended for an interactive developer machine)</span></span>
-<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>access_key <span class="ot">&lt;-</span> keyring<span class="sc">::</span><span class="fu">key_get</span>(<span class="st">&quot;AWS_ACCESS_KEY_ID&quot;</span>)</span>
-<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a>secret_key <span class="ot">&lt;-</span> keyring<span class="sc">::</span><span class="fu">key_get</span>(<span class="st">&quot;AWS_SECRET_ACCESS_KEY&quot;</span>)</span></code></pre></div>
-<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="co"># Option B -- environment variables (CI/CD, Docker)</span></span>
-<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>access_key <span class="ot">&lt;-</span> <span class="fu">Sys.getenv</span>(<span class="st">&quot;AWS_ACCESS_KEY_ID&quot;</span>)</span>
-<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>secret_key <span class="ot">&lt;-</span> <span class="fu">Sys.getenv</span>(<span class="st">&quot;AWS_SECRET_ACCESS_KEY&quot;</span>)</span></code></pre></div>
-<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="co"># Option C -- inline (fine for a quick session; never commit these values)</span></span>
-<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>access_key <span class="ot">&lt;-</span> <span class="st">&quot;AKIAIOSFODNN7EXAMPLE&quot;</span></span>
-<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>secret_key <span class="ot">&lt;-</span> <span class="st">&quot;wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY&quot;</span></span></code></pre></div>
+<div id="where-the-data-goes" class="section level2">
+<h2>Where the data goes</h2>
+<pre><code>s3://study001/
+    imported/datom/        onboarded tables        (this article)</code></pre>
+<p><code>imported</code> is datom’s word for a table that came in from a
+file. datom manages the <code>datom/</code> folder under each prefix: it
+reads and writes the data, metadata and version records there, and
+leaves anything else in the bucket alone.</p>
 </div>
-<div id="build-the-s3-store" class="section level2">
-<h2>Build the S3 store</h2>
-<p>A <strong>store</strong> bundles the addresses datom needs: where
-parquet bytes go and the GitHub PAT that lets datom push metadata. The
-data component is now an S3 component instead of a local one.</p>
-<p>Governance is <strong>not attached</strong>
-(<code>governance = NULL</code>). A solo project’s location authority is
-its own <code>project.yaml</code>; you do not need a portfolio register
-to get started. Governance is opt-in and added later (see <a href="#governance-and-migration-come-later">Governance and migration
-come later</a>).</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>data_component <span class="ot">&lt;-</span> <span class="fu">datom_store_s3</span>(</span>
-<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>  <span class="at">bucket     =</span> bucket,</span>
-<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>  <span class="at">prefix     =</span> prefix,</span>
-<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>  <span class="at">region     =</span> region,</span>
-<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>  <span class="at">access_key =</span> access_key,</span>
-<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a>  <span class="at">secret_key =</span> secret_key</span>
+<div id="build-the-store" class="section level2">
+<h2>Build the store</h2>
+<p>A <strong>store</strong> says where the data lives and how to reach
+it. Giving it a GitHub token makes it a <strong>writer</strong> store:
+it can create the metadata repository and record new versions.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>store_write_imported <span class="ot">&lt;-</span> <span class="fu">datom_store</span>(</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>  <span class="at">data =</span> <span class="fu">datom_store_s3</span>(</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>    <span class="at">bucket     =</span> bucket,</span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>    <span class="at">prefix     =</span> prefix_imported,</span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>    <span class="at">region     =</span> region,</span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a>    <span class="at">access_key =</span> <span class="fu">Sys.getenv</span>(<span class="st">&quot;AWS_ACCESS_KEY_ID&quot;</span>),</span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a>    <span class="at">secret_key =</span> <span class="fu">Sys.getenv</span>(<span class="st">&quot;AWS_SECRET_ACCESS_KEY&quot;</span>)</span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a>  ),</span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a>  <span class="at">github_pat =</span> <span class="fu">Sys.getenv</span>(<span class="st">&quot;GITHUB_PAT&quot;</span>)</span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a>)</span></code></pre></div>
+<p>datom checks that it can reach the bucket as the store is built, so a
+wrong credential shows up here rather than at the first sync.</p>
+</div>
+<div id="create-the-repository" class="section level2">
+<h2>Create the repository</h2>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="fu">datom_init_repo</span>(</span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>  <span class="at">path         =</span> workdir_imported,</span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>  <span class="at">project_name =</span> project_imported,</span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>  <span class="at">store        =</span> store_write_imported,</span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>  <span class="at">create_repo  =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a>  <span class="at">repo_name    =</span> repo_imported</span>
 <span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a>)</span>
-<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a></span>
-<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a>store <span class="ot">&lt;-</span> <span class="fu">datom_store</span>(</span>
-<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a>  <span class="at">governance =</span> <span class="cn">NULL</span>,</span>
-<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a>  <span class="at">data       =</span> data_component,</span>
-<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a>  <span class="at">github_pat =</span> github_pat</span>
-<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a>)</span></code></pre></div>
-<p>By default <code>datom_store_s3()</code> validates connectivity to
-the bucket as the store is built, so a credential or permission problem
-surfaces immediately rather than at first sync.</p>
-</div>
-<div id="initialize-the-data-repository" class="section level2">
-<h2>Initialize the data repository</h2>
-<p>The local working directory (<code>dev_dir</code>) holds only the
-<strong>git clone</strong> – the metadata repository. The data itself
-never lands there; it goes straight to S3.</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="fu">datom_init_repo</span>(</span>
-<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>  <span class="at">path         =</span> dev_dir,</span>
-<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  <span class="at">project_name =</span> project_name,</span>
-<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>  <span class="at">store        =</span> store,</span>
-<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>  <span class="at">create_repo  =</span> <span class="cn">TRUE</span>,</span>
-<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>  <span class="at">repo_name    =</span> repo_name</span>
-<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a>)</span></code></pre></div>
-<p>This creates a GitHub repo, clones it into <code>dev_dir</code>, and
-commits a <code>project.yaml</code> that records the project’s S3 data
-store address. No parquet data is pushed to GitHub – only metadata
-commits travel over the wire.</p>
-<p><code>datom_init_repo()</code> also creates an
-<code>input_files/</code> directory inside the clone. It is gitignored –
-files placed there are never committed. It is the inbox for
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="co">#&gt; v Created GitHub repo &quot;.../study001-imported&quot;.</span></span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a><span class="co">#&gt; v Initialized datom repository &quot;study001-imported&quot; at &#39;.../study001-imported&#39;</span></span></code></pre></div>
+<p>This creates the GitHub repository, clones it into
+<code>workdir_imported</code>, and commits a <code>project.yaml</code>
+recording where the project’s data lives. No data goes to GitHub, only
+metadata.</p>
+<p>There is no <code>mode</code> argument here. Leaving it out gives an
+ordinary repository, one that takes files in with
 <code>datom_sync()</code>.</p>
+<p>The clone also gets an <code>input_files/</code> folder. git ignores
+it, so nothing placed there is ever committed. It is where
+<code>datom_sync()</code> looks for new files.</p>
 </div>
 <div id="connect" class="section level2">
 <h2>Connect</h2>
-<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>conn <span class="ot">&lt;-</span> <span class="fu">datom_get_conn</span>(<span class="at">path =</span> dev_dir, <span class="at">store =</span> store)</span>
-<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a><span class="fu">print</span>(conn)</span>
-<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a><span class="co">#&gt; -- datom connection</span></span>
-<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a><span class="co">#&gt; * Project: &quot;STUDY_001&quot;</span></span>
-<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a><span class="co">#&gt; * Backend: &quot;s3&quot;</span></span>
-<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a><span class="co">#&gt; * Role: &quot;developer&quot;</span></span>
-<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a><span class="co">#&gt; * Data root: &quot;study-001-data&quot;</span></span>
-<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a><span class="co">#&gt; * Data region: &quot;us-east-1&quot;</span></span>
-<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a><span class="co">#&gt; * Governance: not attached</span></span>
-<span id="cb8-10"><a href="#cb8-10" tabindex="-1"></a><span class="co">#&gt; * Path: &quot;/tmp/.../study_001_dev&quot;</span></span>
-<span id="cb8-11"><a href="#cb8-11" tabindex="-1"></a><span class="co">#&gt; * Data repo: &lt;https://github.com/.../study-001-data&gt;</span></span></code></pre></div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a>conn_write_imported <span class="ot">&lt;-</span> <span class="fu">datom_get_conn</span>(</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>  <span class="at">path  =</span> workdir_imported,</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  <span class="at">store =</span> store_write_imported</span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>)</span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a><span class="fu">print</span>(conn_write_imported)</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a><span class="co">#&gt; -- datom connection</span></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="co">#&gt; * Project: &quot;study001-imported&quot;</span></span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a><span class="co">#&gt; * Backend: &quot;s3&quot;</span></span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a><span class="co">#&gt; * Role: &quot;developer&quot;</span></span>
+<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a><span class="co">#&gt; * Data root: &quot;study001&quot;</span></span>
+<span id="cb7-12"><a href="#cb7-12" tabindex="-1"></a><span class="co">#&gt; * Data prefix: &quot;imported/&quot;</span></span>
+<span id="cb7-13"><a href="#cb7-13" tabindex="-1"></a><span class="co">#&gt; * Data region: &quot;us-east-1&quot;</span></span>
+<span id="cb7-14"><a href="#cb7-14" tabindex="-1"></a><span class="co">#&gt; * Governance: not attached</span></span>
+<span id="cb7-15"><a href="#cb7-15" tabindex="-1"></a><span class="co">#&gt; * Path: &#39;.../study001-imported&#39;</span></span>
+<span id="cb7-16"><a href="#cb7-16" tabindex="-1"></a><span class="co">#&gt; * Data repo: &lt;https://github.com/.../study001-imported.git&gt;</span></span></code></pre></div>
 </div>
 <div id="step-1-sync-one-file" class="section level2">
 <h2>Step 1: Sync one file</h2>
-<p>The month-1 extract has just landed. Drop it in the input folder:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="co"># The input folder lives inside the git clone but is gitignored.</span></span>
-<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a><span class="co"># Files placed here are the raw material for datom_sync().</span></span>
-<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a>input_dir <span class="ot">&lt;-</span> <span class="fu">path</span>(dev_dir, <span class="st">&quot;input_files&quot;</span>)</span>
-<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a></span>
-<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a><span class="fu">write.csv</span>(</span>
-<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a>  <span class="fu">datom_example_data</span>(<span class="st">&quot;dm&quot;</span>, <span class="at">cutoff_date =</span> <span class="st">&quot;2026-01-28&quot;</span>),</span>
-<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>  <span class="fu">path</span>(input_dir, <span class="st">&quot;dm.csv&quot;</span>),</span>
-<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="cn">FALSE</span></span>
-<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a>)</span></code></pre></div>
-<p>Scan and sync:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(conn)</span>
-<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a><span class="co">#&gt; i Scanned 1 file: 1 new, 0 changed, 0 unchanged.</span></span>
-<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a></span>
-<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a><span class="fu">datom_sync</span>(conn, manifest)</span>
-<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a><span class="co">#&gt; i Syncing 1 table...</span></span>
-<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a><span class="co">#&gt; v dm synced (new).</span></span>
-<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a><span class="co">#&gt; i Sync complete: 1 succeeded, 0 failed, 0 skipped.</span></span></code></pre></div>
-<p>Three things just happened, in order:</p>
-<ol style="list-style-type: decimal">
-<li>The CSV was read and serialized to parquet, then uploaded <strong>to
-S3</strong> – not to GitHub, and not to the local filesystem.</li>
-<li><code>metadata.json</code> and <code>version_history.json</code>
-were updated in the git clone and committed.</li>
-<li>The metadata commit was pushed to GitHub. The version is auditable
-from any machine with repo access, while the raw data stays in your
-bucket.</li>
-</ol>
-<p>Confirm:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">datom_list</span>(conn)</span>
-<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a><span class="co">#&gt;   name current_version current_data_sha last_updated</span></span>
-<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a><span class="co">#&gt; 1   dm        a8ee7a31         4b6d0a7e 2026-01-28T...</span></span>
-<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a></span>
-<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a><span class="fu">datom_history</span>(conn, <span class="st">&quot;dm&quot;</span>)</span>
-<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a><span class="co">#&gt;    version  data_sha timestamp            message</span></span>
-<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a><span class="co">#&gt; 1 a8ee7a31 4b6d0a7e 2026-01-28T09:02:11Z dm synced from dm.csv</span></span></code></pre></div>
-<p>The input file is now disposable – storage (S3) is the source of
-truth:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="fu">file_delete</span>(<span class="fu">path</span>(input_dir, <span class="st">&quot;dm.csv&quot;</span>))</span>
-<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a><span class="fu">datom_read</span>(conn, <span class="st">&quot;dm&quot;</span>)   <span class="co"># still works -- reads from S3</span></span></code></pre></div>
+<p>The month-1 extract of the demographics table has arrived. Put it in
+the input folder:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>inputs_imported <span class="ot">&lt;-</span> fs<span class="sc">::</span><span class="fu">path</span>(workdir_imported, <span class="st">&quot;input_files&quot;</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a><span class="fu">write.csv</span>(</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  <span class="at">x         =</span> <span class="fu">datom_example_data</span>(<span class="at">domain =</span> <span class="st">&quot;dm&quot;</span>, <span class="at">cutoff_date =</span> <span class="st">&quot;2026-01-28&quot;</span>),</span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>  <span class="at">file      =</span> fs<span class="sc">::</span><span class="fu">path</span>(inputs_imported, <span class="st">&quot;dm.csv&quot;</span>),</span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="cn">FALSE</span></span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a>)</span></code></pre></div>
+<p>Scan the folder, then sync:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(<span class="at">conn =</span> conn_write_imported)</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a><span class="co">#&gt; i Scanned 1 file: 1 new, 0 changed, 0 unchanged.</span></span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a>synced <span class="ot">&lt;-</span> <span class="fu">datom_sync</span>(<span class="at">conn =</span> conn_write_imported, <span class="at">manifest =</span> manifest)</span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a><span class="co">#&gt; i Syncing 1 table...</span></span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a><span class="co">#&gt; v Wrote &quot;dm&quot; (full): &quot;153bff41&quot;</span></span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a><span class="co">#&gt; v &quot;dm&quot; synced (new).</span></span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a><span class="co">#&gt; i Sync complete: 1 succeeded, 0 failed, 0 skipped.</span></span></code></pre></div>
+<p>The file was converted to parquet and uploaded to S3. The version
+record was committed to the metadata repository and pushed to GitHub.
+<code>datom_sync()</code> returns the manifest with a
+<code>result</code> for each file, kept here as <code>synced</code>.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a><span class="fu">datom_list</span>(<span class="at">conn =</span> conn_write_imported)</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a><span class="co">#&gt;   name  kind current_version current_data_sha         last_updated</span></span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a><span class="co">#&gt; 1   dm table        153bff41         decbafd2 2026-09-27T05:58:03Z</span></span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a></span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>dm_history <span class="ot">&lt;-</span> <span class="fu">datom_history</span>(<span class="at">conn =</span> conn_write_imported, <span class="at">name =</span> <span class="st">&quot;dm&quot;</span>,</span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>                            <span class="at">short_hash =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a>dm_history[, <span class="fu">c</span>(<span class="st">&quot;version&quot;</span>, <span class="st">&quot;timestamp&quot;</span>, <span class="st">&quot;commit_message&quot;</span>)]</span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a><span class="co">#&gt;    version            timestamp commit_message</span></span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a><span class="co">#&gt; 1 153bff41 2026-09-27T05:58:03Z  Sync dm (new)</span></span></code></pre></div>
+<p>The input file is no longer needed. The table reads from S3:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>fs<span class="sc">::</span><span class="fu">file_delete</span>(fs<span class="sc">::</span><span class="fu">path</span>(inputs_imported, <span class="st">&quot;dm.csv&quot;</span>))</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a><span class="fu">nrow</span>(<span class="fu">datom_read</span>(<span class="at">conn =</span> conn_write_imported, <span class="at">name =</span> <span class="st">&quot;dm&quot;</span>))</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a><span class="co">#&gt; [1] 4</span></span></code></pre></div>
 </div>
 <div id="step-2-update-one-file" class="section level2">
 <h2>Step 2: Update one file</h2>
 <p>The month-2 extract arrives with new subjects:</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a><span class="fu">write.csv</span>(</span>
-<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a>  <span class="fu">datom_example_data</span>(<span class="st">&quot;dm&quot;</span>, <span class="at">cutoff_date =</span> <span class="st">&quot;2026-02-28&quot;</span>),</span>
-<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a>  <span class="fu">path</span>(input_dir, <span class="st">&quot;dm.csv&quot;</span>),</span>
-<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="cn">FALSE</span></span>
-<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a>)</span>
-<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a></span>
-<span id="cb13-7"><a href="#cb13-7" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(conn)</span>
-<span id="cb13-8"><a href="#cb13-8" tabindex="-1"></a><span class="co">#&gt; i Scanned 1 file: 0 new, 1 changed, 0 unchanged.</span></span>
-<span id="cb13-9"><a href="#cb13-9" tabindex="-1"></a></span>
-<span id="cb13-10"><a href="#cb13-10" tabindex="-1"></a><span class="fu">datom_sync</span>(conn, manifest)</span>
-<span id="cb13-11"><a href="#cb13-11" tabindex="-1"></a><span class="co">#&gt; i Syncing 1 table...</span></span>
-<span id="cb13-12"><a href="#cb13-12" tabindex="-1"></a><span class="co">#&gt; v dm synced (changed).</span></span>
-<span id="cb13-13"><a href="#cb13-13" tabindex="-1"></a><span class="co">#&gt; i Sync complete: 1 succeeded, 0 failed, 0 skipped.</span></span></code></pre></div>
-<p>Two versions now coexist in S3. Read either one:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="fu">datom_history</span>(conn, <span class="st">&quot;dm&quot;</span>)</span>
-<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a><span class="co">#&gt;    version  data_sha timestamp            message</span></span>
-<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a><span class="co">#&gt; 1 5c1a3f7b 9e8f1c2d 2026-02-28T10:14:02Z dm synced from dm.csv</span></span>
-<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a><span class="co">#&gt; 2 a8ee7a31 4b6d0a7e 2026-01-28T09:02:11Z dm synced from dm.csv</span></span>
-<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a></span>
-<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a><span class="co"># Current version (month 2)</span></span>
-<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a><span class="fu">nrow</span>(<span class="fu">datom_read</span>(conn, <span class="st">&quot;dm&quot;</span>))</span>
-<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a><span class="co">#&gt; [1] 16</span></span>
-<span id="cb14-9"><a href="#cb14-9" tabindex="-1"></a></span>
-<span id="cb14-10"><a href="#cb14-10" tabindex="-1"></a><span class="co"># Prior version (month 1) by SHA</span></span>
-<span id="cb14-11"><a href="#cb14-11" tabindex="-1"></a>hist   <span class="ot">&lt;-</span> <span class="fu">datom_history</span>(conn, <span class="st">&quot;dm&quot;</span>)</span>
-<span id="cb14-12"><a href="#cb14-12" tabindex="-1"></a>m1_ver <span class="ot">&lt;-</span> hist<span class="sc">$</span>version[<span class="fu">nrow</span>(hist)]   <span class="co"># oldest row is the month-1 version</span></span>
-<span id="cb14-13"><a href="#cb14-13" tabindex="-1"></a><span class="fu">nrow</span>(<span class="fu">datom_read</span>(conn, <span class="st">&quot;dm&quot;</span>, <span class="at">version =</span> m1_ver))</span>
-<span id="cb14-14"><a href="#cb14-14" tabindex="-1"></a><span class="co">#&gt; [1] 4</span></span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="fu">write.csv</span>(</span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  <span class="at">x         =</span> <span class="fu">datom_example_data</span>(<span class="at">domain =</span> <span class="st">&quot;dm&quot;</span>, <span class="at">cutoff_date =</span> <span class="st">&quot;2026-02-28&quot;</span>),</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>  <span class="at">file      =</span> fs<span class="sc">::</span><span class="fu">path</span>(inputs_imported, <span class="st">&quot;dm.csv&quot;</span>),</span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="cn">FALSE</span></span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a>)</span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a></span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(<span class="at">conn =</span> conn_write_imported)</span>
+<span id="cb12-8"><a href="#cb12-8" tabindex="-1"></a><span class="co">#&gt; i Scanned 1 file: 0 new, 1 changed, 0 unchanged.</span></span>
+<span id="cb12-9"><a href="#cb12-9" tabindex="-1"></a></span>
+<span id="cb12-10"><a href="#cb12-10" tabindex="-1"></a>synced <span class="ot">&lt;-</span> <span class="fu">datom_sync</span>(<span class="at">conn =</span> conn_write_imported, <span class="at">manifest =</span> manifest)</span>
+<span id="cb12-11"><a href="#cb12-11" tabindex="-1"></a><span class="co">#&gt; i Syncing 1 table...</span></span>
+<span id="cb12-12"><a href="#cb12-12" tabindex="-1"></a><span class="co">#&gt; v Wrote &quot;dm&quot; (full): &quot;0fac26cd&quot;</span></span>
+<span id="cb12-13"><a href="#cb12-13" tabindex="-1"></a><span class="co">#&gt; v &quot;dm&quot; synced (changed).</span></span>
+<span id="cb12-14"><a href="#cb12-14" tabindex="-1"></a><span class="co">#&gt; i Sync complete: 1 succeeded, 0 failed, 0 skipped.</span></span></code></pre></div>
+<p>Both versions stay readable. The newest is the default; an older one
+is read by its version. The first 8 characters of a version are enough,
+as with a git commit:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a>dm_history <span class="ot">&lt;-</span> <span class="fu">datom_history</span>(<span class="at">conn =</span> conn_write_imported, <span class="at">name =</span> <span class="st">&quot;dm&quot;</span>,</span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a>                            <span class="at">short_hash =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a>dm_history[, <span class="fu">c</span>(<span class="st">&quot;version&quot;</span>, <span class="st">&quot;timestamp&quot;</span>, <span class="st">&quot;commit_message&quot;</span>)]</span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a><span class="co">#&gt;    version            timestamp    commit_message</span></span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a><span class="co">#&gt; 1 0fac26cd 2026-09-27T05:58:10Z Sync dm (changed)</span></span>
+<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a><span class="co">#&gt; 2 153bff41 2026-09-27T05:58:03Z     Sync dm (new)</span></span>
+<span id="cb13-7"><a href="#cb13-7" tabindex="-1"></a></span>
+<span id="cb13-8"><a href="#cb13-8" tabindex="-1"></a><span class="fu">nrow</span>(<span class="fu">datom_read</span>(<span class="at">conn =</span> conn_write_imported, <span class="at">name =</span> <span class="st">&quot;dm&quot;</span>))</span>
+<span id="cb13-9"><a href="#cb13-9" tabindex="-1"></a><span class="co">#&gt; [1] 16</span></span>
+<span id="cb13-10"><a href="#cb13-10" tabindex="-1"></a></span>
+<span id="cb13-11"><a href="#cb13-11" tabindex="-1"></a>dm_version <span class="ot">&lt;-</span> dm_history<span class="sc">$</span>version[<span class="fu">nrow</span>(dm_history)]   <span class="co"># oldest row: month 1</span></span>
+<span id="cb13-12"><a href="#cb13-12" tabindex="-1"></a><span class="fu">nrow</span>(<span class="fu">datom_read</span>(<span class="at">conn =</span> conn_write_imported, <span class="at">name =</span> <span class="st">&quot;dm&quot;</span>, <span class="at">version =</span> dm_version))</span>
+<span id="cb13-13"><a href="#cb13-13" tabindex="-1"></a><span class="co">#&gt; [1] 4</span></span></code></pre></div>
 </div>
-<div id="step-3-no-op-repeat" class="section level2">
-<h2>Step 3: No-op repeat</h2>
-<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(conn)</span>
-<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a><span class="co">#&gt; i Scanned 1 file: 0 new, 0 changed, 1 unchanged.</span></span>
-<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a></span>
-<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a><span class="fu">datom_sync</span>(conn, manifest)</span>
-<span id="cb15-5"><a href="#cb15-5" tabindex="-1"></a><span class="co">#&gt; i All files unchanged. Nothing to sync.</span></span></code></pre></div>
-<p>Identical content is never re-uploaded. Safe to run on a
-schedule.</p>
+<div id="step-3-sync-again-with-nothing-new" class="section level2">
+<h2>Step 3: Sync again with nothing new</h2>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(<span class="at">conn =</span> conn_write_imported)</span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a><span class="co">#&gt; i Scanned 1 file: 0 new, 0 changed, 1 unchanged.</span></span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a>synced <span class="ot">&lt;-</span> <span class="fu">datom_sync</span>(<span class="at">conn =</span> conn_write_imported, <span class="at">manifest =</span> manifest)</span>
+<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a><span class="co">#&gt; i No new or changed files. Nothing to sync.</span></span></code></pre></div>
+<p>A file datom already holds is not uploaded again, so the sync is safe
+to run on a schedule.</p>
 </div>
 <div id="step-4-a-batch-of-files" class="section level2">
 <h2>Step 4: A batch of files</h2>
-<p>Month-3 brings four domains at once:</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>cutoff <span class="ot">&lt;-</span> <span class="st">&quot;2026-03-28&quot;</span></span>
-<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a></span>
-<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a><span class="fu">write.csv</span>(<span class="fu">datom_example_data</span>(<span class="st">&quot;dm&quot;</span>, <span class="at">cutoff_date =</span> cutoff),</span>
-<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a>          <span class="fu">path</span>(input_dir, <span class="st">&quot;dm.csv&quot;</span>), <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a><span class="fu">write.csv</span>(<span class="fu">datom_example_data</span>(<span class="st">&quot;ex&quot;</span>, <span class="at">cutoff_date =</span> cutoff),</span>
-<span id="cb16-6"><a href="#cb16-6" tabindex="-1"></a>          <span class="fu">path</span>(input_dir, <span class="st">&quot;ex.csv&quot;</span>), <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb16-7"><a href="#cb16-7" tabindex="-1"></a><span class="fu">write.csv</span>(<span class="fu">datom_example_data</span>(<span class="st">&quot;lb&quot;</span>, <span class="at">cutoff_date =</span> cutoff),</span>
-<span id="cb16-8"><a href="#cb16-8" tabindex="-1"></a>          <span class="fu">path</span>(input_dir, <span class="st">&quot;lb.csv&quot;</span>), <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb16-9"><a href="#cb16-9" tabindex="-1"></a><span class="fu">write.csv</span>(<span class="fu">datom_example_data</span>(<span class="st">&quot;ae&quot;</span>, <span class="at">cutoff_date =</span> cutoff),</span>
-<span id="cb16-10"><a href="#cb16-10" tabindex="-1"></a>          <span class="fu">path</span>(input_dir, <span class="st">&quot;ae.csv&quot;</span>), <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb16-11"><a href="#cb16-11" tabindex="-1"></a></span>
-<span id="cb16-12"><a href="#cb16-12" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(conn)</span>
-<span id="cb16-13"><a href="#cb16-13" tabindex="-1"></a><span class="co">#&gt; i Scanned 4 files: 3 new, 1 changed, 0 unchanged.</span></span>
-<span id="cb16-14"><a href="#cb16-14" tabindex="-1"></a></span>
-<span id="cb16-15"><a href="#cb16-15" tabindex="-1"></a><span class="fu">datom_sync</span>(conn, manifest)</span>
-<span id="cb16-16"><a href="#cb16-16" tabindex="-1"></a><span class="co">#&gt; i Syncing 4 tables...</span></span>
-<span id="cb16-17"><a href="#cb16-17" tabindex="-1"></a><span class="co">#&gt; v dm synced (changed).</span></span>
-<span id="cb16-18"><a href="#cb16-18" tabindex="-1"></a><span class="co">#&gt; v ex synced (new).</span></span>
-<span id="cb16-19"><a href="#cb16-19" tabindex="-1"></a><span class="co">#&gt; v lb synced (new).</span></span>
-<span id="cb16-20"><a href="#cb16-20" tabindex="-1"></a><span class="co">#&gt; v ae synced (new).</span></span>
-<span id="cb16-21"><a href="#cb16-21" tabindex="-1"></a><span class="co">#&gt; i Sync complete: 4 succeeded, 0 failed, 0 skipped.</span></span></code></pre></div>
+<p>The month-3 extract brings four tables at once: demographics
+(<code>dm</code>), dosing (<code>ex</code>), labs (<code>lb</code>) and
+adverse events (<code>ae</code>).</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a><span class="cf">for</span> (domain <span class="cf">in</span> <span class="fu">c</span>(<span class="st">&quot;dm&quot;</span>, <span class="st">&quot;ex&quot;</span>, <span class="st">&quot;lb&quot;</span>, <span class="st">&quot;ae&quot;</span>)) {</span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a>  <span class="fu">write.csv</span>(</span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a>    <span class="at">x         =</span> <span class="fu">datom_example_data</span>(<span class="at">domain =</span> domain, <span class="at">cutoff_date =</span> <span class="st">&quot;2026-03-28&quot;</span>),</span>
+<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a>    <span class="at">file      =</span> fs<span class="sc">::</span><span class="fu">path</span>(inputs_imported, <span class="fu">paste0</span>(domain, <span class="st">&quot;.csv&quot;</span>)),</span>
+<span id="cb15-5"><a href="#cb15-5" tabindex="-1"></a>    <span class="at">row.names =</span> <span class="cn">FALSE</span></span>
+<span id="cb15-6"><a href="#cb15-6" tabindex="-1"></a>  )</span>
+<span id="cb15-7"><a href="#cb15-7" tabindex="-1"></a>}</span>
+<span id="cb15-8"><a href="#cb15-8" tabindex="-1"></a></span>
+<span id="cb15-9"><a href="#cb15-9" tabindex="-1"></a>manifest <span class="ot">&lt;-</span> <span class="fu">datom_sync_manifest</span>(<span class="at">conn =</span> conn_write_imported)</span>
+<span id="cb15-10"><a href="#cb15-10" tabindex="-1"></a><span class="co">#&gt; i Scanned 4 files: 3 new, 1 changed, 0 unchanged.</span></span>
+<span id="cb15-11"><a href="#cb15-11" tabindex="-1"></a></span>
+<span id="cb15-12"><a href="#cb15-12" tabindex="-1"></a>synced <span class="ot">&lt;-</span> <span class="fu">datom_sync</span>(<span class="at">conn =</span> conn_write_imported, <span class="at">manifest =</span> manifest)</span>
+<span id="cb15-13"><a href="#cb15-13" tabindex="-1"></a><span class="co">#&gt; i Syncing 4 tables...</span></span>
+<span id="cb15-14"><a href="#cb15-14" tabindex="-1"></a><span class="co">#&gt; v Wrote &quot;ae&quot; (full): &quot;075773e9&quot;</span></span>
+<span id="cb15-15"><a href="#cb15-15" tabindex="-1"></a><span class="co">#&gt; v &quot;ae&quot; synced (new).</span></span>
+<span id="cb15-16"><a href="#cb15-16" tabindex="-1"></a><span class="co">#&gt; v Wrote &quot;dm&quot; (full): &quot;773e6862&quot;</span></span>
+<span id="cb15-17"><a href="#cb15-17" tabindex="-1"></a><span class="co">#&gt; v &quot;dm&quot; synced (changed).</span></span>
+<span id="cb15-18"><a href="#cb15-18" tabindex="-1"></a><span class="co">#&gt; v Wrote &quot;ex&quot; (full): &quot;8dbcc9a7&quot;</span></span>
+<span id="cb15-19"><a href="#cb15-19" tabindex="-1"></a><span class="co">#&gt; v &quot;ex&quot; synced (new).</span></span>
+<span id="cb15-20"><a href="#cb15-20" tabindex="-1"></a><span class="co">#&gt; v Wrote &quot;lb&quot; (full): &quot;435bccb0&quot;</span></span>
+<span id="cb15-21"><a href="#cb15-21" tabindex="-1"></a><span class="co">#&gt; v &quot;lb&quot; synced (new).</span></span>
+<span id="cb15-22"><a href="#cb15-22" tabindex="-1"></a><span class="co">#&gt; i Sync complete: 4 succeeded, 0 failed, 0 skipped.</span></span></code></pre></div>
 <p>All four tables are now versioned in S3:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a><span class="fu">datom_list</span>(conn)</span>
-<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a><span class="co">#&gt;   name current_version current_data_sha last_updated</span></span>
-<span id="cb17-3"><a href="#cb17-3" tabindex="-1"></a><span class="co">#&gt; 1   ae        3a17b8e2         e91d04ff 2026-03-28T...</span></span>
-<span id="cb17-4"><a href="#cb17-4" tabindex="-1"></a><span class="co">#&gt; 2   dm        d0922fc7         c2e80a14 2026-03-28T...</span></span>
-<span id="cb17-5"><a href="#cb17-5" tabindex="-1"></a><span class="co">#&gt; 3   ex        f44910b5         88a73e02 2026-03-28T...</span></span>
-<span id="cb17-6"><a href="#cb17-6" tabindex="-1"></a><span class="co">#&gt; 4   lb        718e02ca         4c3812dd 2026-03-28T...</span></span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a><span class="fu">datom_list</span>(<span class="at">conn =</span> conn_write_imported)</span>
+<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a><span class="co">#&gt;   name  kind current_version current_data_sha         last_updated</span></span>
+<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a><span class="co">#&gt; 1   dm table        773e6862         e547f03d 2026-09-27T05:58:22Z</span></span>
+<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a><span class="co">#&gt; 2   ae table        075773e9         d5f8dd5a 2026-09-27T05:58:17Z</span></span>
+<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a><span class="co">#&gt; 3   ex table        8dbcc9a7         ab96afc3 2026-09-27T05:58:26Z</span></span>
+<span id="cb16-6"><a href="#cb16-6" tabindex="-1"></a><span class="co">#&gt; 4   lb table        435bccb0         5d419c60 2026-09-27T05:58:31Z</span></span></code></pre></div>
 </div>
 <div id="reading-as-a-reader" class="section level2">
 <h2>Reading as a reader</h2>
-<p>The reader role connects with bucket credentials alone – no PAT, no
-git clone:</p>
-<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a>reader_store <span class="ot">&lt;-</span> <span class="fu">datom_store</span>(</span>
-<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a>  <span class="at">governance =</span> <span class="cn">NULL</span>,</span>
-<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a>  <span class="at">data       =</span> <span class="fu">datom_store_s3</span>(</span>
-<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a>    <span class="at">bucket     =</span> bucket,</span>
-<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a>    <span class="at">prefix     =</span> prefix,</span>
-<span id="cb18-6"><a href="#cb18-6" tabindex="-1"></a>    <span class="at">region     =</span> region,</span>
-<span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a>    <span class="at">access_key =</span> access_key,</span>
-<span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a>    <span class="at">secret_key =</span> secret_key</span>
-<span id="cb18-9"><a href="#cb18-9" tabindex="-1"></a>  )</span>
-<span id="cb18-10"><a href="#cb18-10" tabindex="-1"></a>)                                         <span class="co"># no PAT -&gt; reader role</span></span>
-<span id="cb18-11"><a href="#cb18-11" tabindex="-1"></a></span>
-<span id="cb18-12"><a href="#cb18-12" tabindex="-1"></a>reader_conn <span class="ot">&lt;-</span> <span class="fu">datom_get_conn</span>(<span class="at">store =</span> reader_store, <span class="at">project_name =</span> project_name)</span>
-<span id="cb18-13"><a href="#cb18-13" tabindex="-1"></a></span>
-<span id="cb18-14"><a href="#cb18-14" tabindex="-1"></a><span class="fu">datom_read</span>(reader_conn, <span class="st">&quot;lb&quot;</span>)   <span class="co"># labs, streamed directly from S3</span></span></code></pre></div>
-<p>The read streams the parquet object from S3 directly; it does
-<strong>not</strong> go through GitHub. A teammate on another machine
-takes the same path – they need access to the bucket, not to the git
-repo.</p>
+<p>A colleague who only reads needs bucket credentials and nothing else:
+no GitHub token and no clone. A store without a token is a
+<strong>reader</strong> store.</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a>store_read_imported <span class="ot">&lt;-</span> <span class="fu">datom_store</span>(</span>
+<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a>  <span class="at">data =</span> <span class="fu">datom_store_s3</span>(</span>
+<span id="cb17-3"><a href="#cb17-3" tabindex="-1"></a>    <span class="at">bucket     =</span> bucket,</span>
+<span id="cb17-4"><a href="#cb17-4" tabindex="-1"></a>    <span class="at">prefix     =</span> prefix_imported,</span>
+<span id="cb17-5"><a href="#cb17-5" tabindex="-1"></a>    <span class="at">region     =</span> region,</span>
+<span id="cb17-6"><a href="#cb17-6" tabindex="-1"></a>    <span class="at">access_key =</span> <span class="fu">Sys.getenv</span>(<span class="st">&quot;AWS_ACCESS_KEY_ID&quot;</span>),</span>
+<span id="cb17-7"><a href="#cb17-7" tabindex="-1"></a>    <span class="at">secret_key =</span> <span class="fu">Sys.getenv</span>(<span class="st">&quot;AWS_SECRET_ACCESS_KEY&quot;</span>)</span>
+<span id="cb17-8"><a href="#cb17-8" tabindex="-1"></a>  )</span>
+<span id="cb17-9"><a href="#cb17-9" tabindex="-1"></a>)</span>
+<span id="cb17-10"><a href="#cb17-10" tabindex="-1"></a></span>
+<span id="cb17-11"><a href="#cb17-11" tabindex="-1"></a>conn_read_imported <span class="ot">&lt;-</span> <span class="fu">datom_get_conn</span>(</span>
+<span id="cb17-12"><a href="#cb17-12" tabindex="-1"></a>  <span class="at">store        =</span> store_read_imported,</span>
+<span id="cb17-13"><a href="#cb17-13" tabindex="-1"></a>  <span class="at">project_name =</span> project_imported</span>
+<span id="cb17-14"><a href="#cb17-14" tabindex="-1"></a>)</span>
+<span id="cb17-15"><a href="#cb17-15" tabindex="-1"></a></span>
+<span id="cb17-16"><a href="#cb17-16" tabindex="-1"></a><span class="fu">nrow</span>(<span class="fu">datom_read</span>(<span class="at">conn =</span> conn_read_imported, <span class="at">name =</span> <span class="st">&quot;lb&quot;</span>))</span>
+<span id="cb17-17"><a href="#cb17-17" tabindex="-1"></a><span class="co">#&gt; [1] 205</span></span></code></pre></div>
+<p>The read goes straight to S3, not through GitHub.</p>
 </div>
 <div id="where-you-are" class="section level2">
 <h2>Where you are</h2>
 <ul>
-<li>The same sync workflow (one file, update, no-op, batch) works
-identically on S3 – the backend is transparent.</li>
-<li>Four tables versioned in your bucket; metadata auditable on
-GitHub.</li>
-<li>Parquet data lives in S3 – <strong>nothing sensitive went to
-GitHub</strong>.</li>
-<li>No governance attached; the project stands on its own
-<code>project.yaml</code>.</li>
+<li>Four tables are versioned in
+<code>s3://study001/imported/datom/</code>.</li>
+<li>Their history is in a GitHub repository; the data itself never went
+there.</li>
+<li>The same sync steps work on S3 as on a local folder.</li>
 </ul>
-<p>To trace how derived tables descend from their sources, see <a href="source-lineage.html">Tracing Data Lineage</a>.</p>
+</div>
+<div id="what-next" class="section level2">
+<h2>What next</h2>
+<ul>
+<li><strong>Keep going.</strong> <a href="citable-sets.html">Citing a
+Set of Tables</a> builds on this data: it collects these tables, and the
+ones you derive from them, into one versioned, citable set. Continue in
+the same R session and skip the teardown below for now.</li>
+<li><strong>Stop here.</strong> Run the <a href="#teardown">teardown</a>.</li>
+</ul>
 </div>
 <div id="governance-and-migration-come-later" class="section level2">
 <h2>Governance and migration come later</h2>
-<p>Two capabilities are deliberately <strong>not</strong> part of this
-starting story:</p>
+<p>Two things are deliberately left out of this article:</p>
 <ul>
-<li><strong>Governance</strong> – a shared portfolio register,
-dispatch-based reader access, and managed teardown. It is opt-in and
-provided by the governance companion package (<code>datomanager</code>),
-adopted when a project graduates from solo to shared/managed. Starting
-on S3 does not commit you to it.</li>
-<li><strong>Managed migration</strong> – moving an existing project’s
-data between backends (local to S3, or S3 to S3) while preserving
-history. That is a separate, governed workflow documented with the
-companion package. Because you started on S3, you do not need it now; it
-remains available later without contradicting anything you set up
-here.</li>
+<li><strong>Governance</strong>: a shared register of projects, managed
+reader access and managed teardown. It is optional, provided by the
+companion package <code>datomanager</code>, and starting on S3 does not
+commit you to it.</li>
+<li><strong>Migration</strong>: moving an existing project’s data from
+one store to another while keeping its history. That is also a
+<code>datomanager</code> workflow. You started on S3, so you do not need
+it now.</li>
 </ul>
-<p>In other words, <strong>start-on-S3</strong> and
-<strong>migrate-to-S3</strong> are complementary entry points: this
-article is the greenfield path, and managed migration is the
-move-an-existing-project path.</p>
 </div>
 <div id="teardown" class="section level2">
 <h2>Teardown</h2>
-<p>When you are done exploring, tear the project down.
-<code>datom_repo_delete()</code> removes the GitHub metadata repo and
-the local clone. <strong>Do this before</strong> deleting the local
-directory by hand – removing the clone first strips the GitHub remote
-reference and the remote repo will not be deleted.</p>
-<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a><span class="fu">datom_repo_delete</span>(conn, <span class="at">confirm =</span> <span class="st">&quot;STUDY_001&quot;</span>)</span></code></pre></div>
-<p><code>datom_repo_delete()</code> does <strong>not</strong> empty your
-S3 bucket – bucket lifecycle is your organization’s domain, not datom’s.
-Remove the project’s objects from S3 with your own tooling (for example,
-the AWS CLI) if you no longer need them.</p>
+<p>Delete the project’s storage first, then its repository:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a><span class="fu">datom_storage_delete_prefix</span>(<span class="at">conn =</span> conn_write_imported)</span>
+<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a><span class="fu">datom_repo_delete</span>(<span class="at">conn =</span> conn_write_imported, <span class="at">confirm =</span> project_imported)</span></code></pre></div>
+<p><code>datom_storage_delete_prefix()</code> deletes everything under
+<code>imported/datom/</code>, and it does not ask first. The rest of the
+bucket is left alone, and so is the bucket itself.</p>
+<p><code>datom_repo_delete()</code> deletes the GitHub repository and
+the local clone. It needs the project name as <code>confirm</code>, and
+it does not touch storage.</p>
 </div>
 
 

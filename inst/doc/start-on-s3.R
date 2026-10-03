@@ -5,198 +5,199 @@ knitr::opts_chunk$set(
   eval     = FALSE
 )
 
-## -----------------------------------------------------------------------------
+## ----keyring-setup------------------------------------------------------------
+# keyring::key_set(service = "GITHUB_PAT")
+# keyring::key_set(service = "AWS_ACCESS_KEY_ID")
+# keyring::key_set(service = "AWS_SECRET_ACCESS_KEY")
+
+## ----secrets------------------------------------------------------------------
+# Sys.setenv(
+#   GITHUB_PAT            = keyring::key_get(service = "GITHUB_PAT"),
+#   AWS_ACCESS_KEY_ID     = keyring::key_get(service = "AWS_ACCESS_KEY_ID"),
+#   AWS_SECRET_ACCESS_KEY = keyring::key_get(service = "AWS_SECRET_ACCESS_KEY")
+# )
+
+## ----settings-----------------------------------------------------------------
 # library(datom)
-# library(fs)
 # 
-# # --- Settings you control --------------------------------------------------
-# project_name <- "STUDY_001"        # logical project name (recorded in metadata)
-# repo_name    <- "study-001-data"   # GitHub repo name for the metadata repo
+# # --- Settings you control ----------------------------------------------------
+# bucket           <- "study001"            # one bucket per study
+# region           <- "us-east-1"
 # 
-# bucket <- "study-001-data"         # an S3 bucket you can read/write
-#                                    #   (datom does NOT create buckets)
-# prefix <- NULL                     # raw data at the bucket root; use e.g.
-#                                    #   "adam/" for a derived-products prefix
-# region <- "us-east-1"              # the bucket's AWS region
+# project_imported <- "study001-imported"   # recorded in the project's metadata
+# prefix_imported  <- "imported/"           # this project's folder in the bucket
+# repo_imported    <- "study001-imported"   # GitHub repo name
 # 
-# # Local working directory for the metadata git clone. The data itself never
-# # lands here -- it goes straight to S3. A temp dir is fine for this walkthrough.
-# dev_dir <- path(tempdir(), "study_001_dev")
-# 
-# # GitHub PAT (scoped to `repo`), read from your OS keychain by name.
-# github_pat <- keyring::key_get("GITHUB_PAT")
-# # ---------------------------------------------------------------------------
+# # Local working folder for the metadata repository. The data never lands here;
+# # it goes straight to S3.
+# workdir_imported <- fs::path(tempdir(), "study001-imported")
 
-## -----------------------------------------------------------------------------
-# # Option A -- keyring (recommended for an interactive developer machine)
-# access_key <- keyring::key_get("AWS_ACCESS_KEY_ID")
-# secret_key <- keyring::key_get("AWS_SECRET_ACCESS_KEY")
-
-## -----------------------------------------------------------------------------
-# # Option B -- environment variables (CI/CD, Docker)
-# access_key <- Sys.getenv("AWS_ACCESS_KEY_ID")
-# secret_key <- Sys.getenv("AWS_SECRET_ACCESS_KEY")
-
-## -----------------------------------------------------------------------------
-# # Option C -- inline (fine for a quick session; never commit these values)
-# access_key <- "AKIAIOSFODNN7EXAMPLE"
-# secret_key <- "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-
-## -----------------------------------------------------------------------------
-# data_component <- datom_store_s3(
-#   bucket     = bucket,
-#   prefix     = prefix,
-#   region     = region,
-#   access_key = access_key,
-#   secret_key = secret_key
-# )
-# 
-# store <- datom_store(
-#   governance = NULL,
-#   data       = data_component,
-#   github_pat = github_pat
+## ----store-write--------------------------------------------------------------
+# store_write_imported <- datom_store(
+#   data = datom_store_s3(
+#     bucket     = bucket,
+#     prefix     = prefix_imported,
+#     region     = region,
+#     access_key = Sys.getenv("AWS_ACCESS_KEY_ID"),
+#     secret_key = Sys.getenv("AWS_SECRET_ACCESS_KEY")
+#   ),
+#   github_pat = Sys.getenv("GITHUB_PAT")
 # )
 
-## -----------------------------------------------------------------------------
+## ----init---------------------------------------------------------------------
 # datom_init_repo(
-#   path         = dev_dir,
-#   project_name = project_name,
-#   store        = store,
+#   path         = workdir_imported,
+#   project_name = project_imported,
+#   store        = store_write_imported,
 #   create_repo  = TRUE,
-#   repo_name    = repo_name
+#   repo_name    = repo_imported
 # )
+# #> v Created GitHub repo ".../study001-imported".
+# #> v Initialized datom repository "study001-imported" at '.../study001-imported'
 
-## -----------------------------------------------------------------------------
-# conn <- datom_get_conn(path = dev_dir, store = store)
-# print(conn)
+## ----conn-write---------------------------------------------------------------
+# conn_write_imported <- datom_get_conn(
+#   path  = workdir_imported,
+#   store = store_write_imported
+# )
+# print(conn_write_imported)
+# #>
 # #> -- datom connection
-# #> * Project: "STUDY_001"
+# #> * Project: "study001-imported"
 # #> * Backend: "s3"
 # #> * Role: "developer"
-# #> * Data root: "study-001-data"
+# #> * Data root: "study001"
+# #> * Data prefix: "imported/"
 # #> * Data region: "us-east-1"
 # #> * Governance: not attached
-# #> * Path: "/tmp/.../study_001_dev"
-# #> * Data repo: <https://github.com/.../study-001-data>
+# #> * Path: '.../study001-imported'
+# #> * Data repo: <https://github.com/.../study001-imported.git>
 
-## -----------------------------------------------------------------------------
-# # The input folder lives inside the git clone but is gitignored.
-# # Files placed here are the raw material for datom_sync().
-# input_dir <- path(dev_dir, "input_files")
+## ----step1-write--------------------------------------------------------------
+# inputs_imported <- fs::path(workdir_imported, "input_files")
 # 
 # write.csv(
-#   datom_example_data("dm", cutoff_date = "2026-01-28"),
-#   path(input_dir, "dm.csv"),
+#   x         = datom_example_data(domain = "dm", cutoff_date = "2026-01-28"),
+#   file      = fs::path(inputs_imported, "dm.csv"),
 #   row.names = FALSE
 # )
 
-## -----------------------------------------------------------------------------
-# manifest <- datom_sync_manifest(conn)
+## ----step1-sync---------------------------------------------------------------
+# manifest <- datom_sync_manifest(conn = conn_write_imported)
 # #> i Scanned 1 file: 1 new, 0 changed, 0 unchanged.
 # 
-# datom_sync(conn, manifest)
+# synced <- datom_sync(conn = conn_write_imported, manifest = manifest)
 # #> i Syncing 1 table...
-# #> v dm synced (new).
+# #> v Wrote "dm" (full): "153bff41"
+# #> v "dm" synced (new).
 # #> i Sync complete: 1 succeeded, 0 failed, 0 skipped.
 
-## -----------------------------------------------------------------------------
-# datom_list(conn)
-# #>   name current_version current_data_sha last_updated
-# #> 1   dm        a8ee7a31         4b6d0a7e 2026-01-28T...
+## ----step1-list---------------------------------------------------------------
+# datom_list(conn = conn_write_imported)
+# #>   name  kind current_version current_data_sha         last_updated
+# #> 1   dm table        153bff41         decbafd2 2026-09-27T05:58:03Z
 # 
-# datom_history(conn, "dm")
-# #>    version  data_sha timestamp            message
-# #> 1 a8ee7a31 4b6d0a7e 2026-01-28T09:02:11Z dm synced from dm.csv
+# dm_history <- datom_history(conn = conn_write_imported, name = "dm",
+#                             short_hash = TRUE)
+# dm_history[, c("version", "timestamp", "commit_message")]
+# #>    version            timestamp commit_message
+# #> 1 153bff41 2026-09-27T05:58:03Z  Sync dm (new)
 
-## -----------------------------------------------------------------------------
-# file_delete(path(input_dir, "dm.csv"))
-# datom_read(conn, "dm")   # still works -- reads from S3
+## ----step1-delete-------------------------------------------------------------
+# fs::file_delete(fs::path(inputs_imported, "dm.csv"))
+# nrow(datom_read(conn = conn_write_imported, name = "dm"))
+# #> [1] 4
 
-## -----------------------------------------------------------------------------
+## ----step2--------------------------------------------------------------------
 # write.csv(
-#   datom_example_data("dm", cutoff_date = "2026-02-28"),
-#   path(input_dir, "dm.csv"),
+#   x         = datom_example_data(domain = "dm", cutoff_date = "2026-02-28"),
+#   file      = fs::path(inputs_imported, "dm.csv"),
 #   row.names = FALSE
 # )
 # 
-# manifest <- datom_sync_manifest(conn)
+# manifest <- datom_sync_manifest(conn = conn_write_imported)
 # #> i Scanned 1 file: 0 new, 1 changed, 0 unchanged.
 # 
-# datom_sync(conn, manifest)
+# synced <- datom_sync(conn = conn_write_imported, manifest = manifest)
 # #> i Syncing 1 table...
-# #> v dm synced (changed).
+# #> v Wrote "dm" (full): "0fac26cd"
+# #> v "dm" synced (changed).
 # #> i Sync complete: 1 succeeded, 0 failed, 0 skipped.
 
-## -----------------------------------------------------------------------------
-# datom_history(conn, "dm")
-# #>    version  data_sha timestamp            message
-# #> 1 5c1a3f7b 9e8f1c2d 2026-02-28T10:14:02Z dm synced from dm.csv
-# #> 2 a8ee7a31 4b6d0a7e 2026-01-28T09:02:11Z dm synced from dm.csv
+## ----step2-read---------------------------------------------------------------
+# dm_history <- datom_history(conn = conn_write_imported, name = "dm",
+#                             short_hash = TRUE)
+# dm_history[, c("version", "timestamp", "commit_message")]
+# #>    version            timestamp    commit_message
+# #> 1 0fac26cd 2026-09-27T05:58:10Z Sync dm (changed)
+# #> 2 153bff41 2026-09-27T05:58:03Z     Sync dm (new)
 # 
-# # Current version (month 2)
-# nrow(datom_read(conn, "dm"))
+# nrow(datom_read(conn = conn_write_imported, name = "dm"))
 # #> [1] 16
 # 
-# # Prior version (month 1) by SHA
-# hist   <- datom_history(conn, "dm")
-# m1_ver <- hist$version[nrow(hist)]   # oldest row is the month-1 version
-# nrow(datom_read(conn, "dm", version = m1_ver))
+# dm_version <- dm_history$version[nrow(dm_history)]   # oldest row: month 1
+# nrow(datom_read(conn = conn_write_imported, name = "dm", version = dm_version))
 # #> [1] 4
 
-## -----------------------------------------------------------------------------
-# manifest <- datom_sync_manifest(conn)
+## ----step3--------------------------------------------------------------------
+# manifest <- datom_sync_manifest(conn = conn_write_imported)
 # #> i Scanned 1 file: 0 new, 0 changed, 1 unchanged.
 # 
-# datom_sync(conn, manifest)
-# #> i All files unchanged. Nothing to sync.
+# synced <- datom_sync(conn = conn_write_imported, manifest = manifest)
+# #> i No new or changed files. Nothing to sync.
 
-## -----------------------------------------------------------------------------
-# cutoff <- "2026-03-28"
+## ----step4--------------------------------------------------------------------
+# for (domain in c("dm", "ex", "lb", "ae")) {
+#   write.csv(
+#     x         = datom_example_data(domain = domain, cutoff_date = "2026-03-28"),
+#     file      = fs::path(inputs_imported, paste0(domain, ".csv")),
+#     row.names = FALSE
+#   )
+# }
 # 
-# write.csv(datom_example_data("dm", cutoff_date = cutoff),
-#           path(input_dir, "dm.csv"), row.names = FALSE)
-# write.csv(datom_example_data("ex", cutoff_date = cutoff),
-#           path(input_dir, "ex.csv"), row.names = FALSE)
-# write.csv(datom_example_data("lb", cutoff_date = cutoff),
-#           path(input_dir, "lb.csv"), row.names = FALSE)
-# write.csv(datom_example_data("ae", cutoff_date = cutoff),
-#           path(input_dir, "ae.csv"), row.names = FALSE)
-# 
-# manifest <- datom_sync_manifest(conn)
+# manifest <- datom_sync_manifest(conn = conn_write_imported)
 # #> i Scanned 4 files: 3 new, 1 changed, 0 unchanged.
 # 
-# datom_sync(conn, manifest)
+# synced <- datom_sync(conn = conn_write_imported, manifest = manifest)
 # #> i Syncing 4 tables...
-# #> v dm synced (changed).
-# #> v ex synced (new).
-# #> v lb synced (new).
-# #> v ae synced (new).
+# #> v Wrote "ae" (full): "075773e9"
+# #> v "ae" synced (new).
+# #> v Wrote "dm" (full): "773e6862"
+# #> v "dm" synced (changed).
+# #> v Wrote "ex" (full): "8dbcc9a7"
+# #> v "ex" synced (new).
+# #> v Wrote "lb" (full): "435bccb0"
+# #> v "lb" synced (new).
 # #> i Sync complete: 4 succeeded, 0 failed, 0 skipped.
 
-## -----------------------------------------------------------------------------
-# datom_list(conn)
-# #>   name current_version current_data_sha last_updated
-# #> 1   ae        3a17b8e2         e91d04ff 2026-03-28T...
-# #> 2   dm        d0922fc7         c2e80a14 2026-03-28T...
-# #> 3   ex        f44910b5         88a73e02 2026-03-28T...
-# #> 4   lb        718e02ca         4c3812dd 2026-03-28T...
+## ----step4-list---------------------------------------------------------------
+# datom_list(conn = conn_write_imported)
+# #>   name  kind current_version current_data_sha         last_updated
+# #> 1   dm table        773e6862         e547f03d 2026-09-27T05:58:22Z
+# #> 2   ae table        075773e9         d5f8dd5a 2026-09-27T05:58:17Z
+# #> 3   ex table        8dbcc9a7         ab96afc3 2026-09-27T05:58:26Z
+# #> 4   lb table        435bccb0         5d419c60 2026-09-27T05:58:31Z
 
-## -----------------------------------------------------------------------------
-# reader_store <- datom_store(
-#   governance = NULL,
-#   data       = datom_store_s3(
+## ----reader-------------------------------------------------------------------
+# store_read_imported <- datom_store(
+#   data = datom_store_s3(
 #     bucket     = bucket,
-#     prefix     = prefix,
+#     prefix     = prefix_imported,
 #     region     = region,
-#     access_key = access_key,
-#     secret_key = secret_key
+#     access_key = Sys.getenv("AWS_ACCESS_KEY_ID"),
+#     secret_key = Sys.getenv("AWS_SECRET_ACCESS_KEY")
 #   )
-# )                                         # no PAT -> reader role
+# )
 # 
-# reader_conn <- datom_get_conn(store = reader_store, project_name = project_name)
+# conn_read_imported <- datom_get_conn(
+#   store        = store_read_imported,
+#   project_name = project_imported
+# )
 # 
-# datom_read(reader_conn, "lb")   # labs, streamed directly from S3
+# nrow(datom_read(conn = conn_read_imported, name = "lb"))
+# #> [1] 205
 
-## -----------------------------------------------------------------------------
-# datom_repo_delete(conn, confirm = "STUDY_001")
+## ----teardown-imported--------------------------------------------------------
+# datom_storage_delete_prefix(conn = conn_write_imported)
+# datom_repo_delete(conn = conn_write_imported, confirm = project_imported)
 
